@@ -1,0 +1,153 @@
+# ===========================================================================
+# General configuration
+# ===========================================================================
+
+# Where to find the daily newline-delimited JSON dumpfiles.
+# `%s` is a placeholder for the date (e.g. `20221012`).
+# logfile: /var/log/logstash/dump-%s.ndjson
+logfile: example-log.ndjson
+
+
+# When using the `--email` flag:
+email_to:
+    - administrator@example.com
+email_subject: Server Log Summary
+
+
+# Optionally include links from the email to your Kibana instance:
+kibana_base_url: https://elk.local
+# In your Kibana instance, go to /app/management/kibana/dataViews,
+# and click on the Data View corresponding to your Logstash messages.
+# Copy the UUID from the URL.
+elasticsearch_data_view_id: 00000000-0000-0000-0000-000000000000
+# A [PHP datetime format string](https://www.php.net/manual/en/datetime.format.php#refsect1-datetime.format-parameters)
+# for the index corresponding to a particular event.
+# Use backslash to escape literal characters.
+# For example, `\e\l\k-Ymd` would map an event that occurred on 2022-10-12 to Elasticsearch index `elk-20221012`.
+elasticsearch_index_date_format: '\e\l\k-Ymd'
+
+
+# ===========================================================================
+# Rewrites
+# ===========================================================================
+# Rewrites are regular expressions that alter values in particular fields.
+# They're applied prior to aggregation,
+# so you can use them to deduplicate similar/redundant messages.
+rewrites:
+    url.path:  # The name of the field to alter.
+        # The key is a regular expression of text to match in the specified field;
+        # the value is what to replace the matched text with.
+        # Example: hide UUIDs.
+        '\b[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\b': '<deduped>'
+
+
+# ===========================================================================
+# Annotations
+# ===========================================================================
+# Annotations are regular expressions that add links to matched text.
+# You can use this to reference issues you've reported but haven't fixed yet,
+# as a reminder to refrain from filing duplicate reports.
+annotations:
+    # The key is a regular expression of text to match in any field;
+    # the value is what the matching text should link to.
+    # Example: in log messages about 404 errors, add a reminder about the issue I created for adding a favicon.
+    '/favicon.ico': 'https://example.com/issue-tracker/todo/47925-add-a-favicon'
+
+
+# ===========================================================================
+# Summaries
+# ===========================================================================
+# Each summary is a section in the output email;
+# it matches (selects) certain log messages,
+# then formats them into a table (or multiple tables).
+# Summaries are processed in the same order that they appear here.
+summaries:
+    # Example: summarize HTTP 404 errors:
+    🕷 HTTP 404 not found:  # This is the display name of this summary block.
+        select:
+            # `select` is an array of hashes.
+            # The outer array is ORred;
+            # the inner hash is ANDed.
+            # The hash key is the field to filter on;
+            # the hash value is a regular expression to apply to the field's value.
+            # Example: match log messages that either have Drupal Watchdog Type `page not found`, OR (came from Apache access logs AND have HTTP response code 404).
+            - drupal.type: ^page not found$
+            - event.dataset: ^apache.access$
+              http.response.status_code: ^404$
+        charts:
+            # `charts` take the log messages selected above
+            # and format them into tables.
+            # Each chart in a summary operates on the same set of messages,
+            # allowing you to aggregate the data in different ways.
+            # Example: show which target URLs are returning 404 errors:
+            Grouped by target URL:  # This is the display name of this summary block's chart.
+                group_by:
+                    - server.domain
+                    - url.path
+                show_fields:
+                    - server.domain
+                    - url.path
+                    - user_agent.name  # This field isn't part of the group_by, so its column is labeled "(poly)" to indicate that each table cell in this column shows just a single representative value, but there may be other values not shown.
+            # Example: show which clients are making requests that result in 404 errors:
+            Grouped by client IP:
+                group_by: client.ip
+                show_fields:
+                    - client.ip
+                    - client.domain
+                    - server.domain
+                    - url.path
+
+    # Example: summarize IMAP logins:
+    📬 IMAP Login:
+        select:
+            - log.syslog.identifier: ^dovecot$
+              process.name: ^imap-login$
+              event.action: ^Login$
+        charts:
+            Grouped by user + IP:
+                count: 1000  # By default, draff shows the top 5 groups with the most occurrences.  You can pick a higher number to see more groups.
+                group_by:
+                    - client.user.name
+                    - client.ip
+                show_fields:
+                    - client.user.name
+                    - client.ip
+                    - client.domain
+
+    🕷 HTTP 5xx server error:
+        concern: true  # This causes the summary block to be highlighted in yellow, indicating that any messages here are potentially concerning.
+        select:
+            - event.dataset: ^apache.access$
+              http.response.status_code: ^5
+        charts:
+            Grouped by URL + status:
+                group_by:
+                    - server.domain
+                    - url.path
+                    - http.response.status_code
+                show_fields:
+                    - server.domain
+                    - url.path
+                    - http.response.status_code
+                    - client.domain
+
+    # This last summary is a catch-all.
+    # It doesn't have a `select`,
+    # so it collects all events that weren't already processed by preceding summaries.
+    ℹ️ Other:
+        charts:
+            Grouped by message:
+                group_by: message
+                sort_by: host.name ascending
+                show_fields:
+                    - host.name
+                    - event.dataset
+                    - message
+            Top leftover sources:
+                group_by: event.dataset
+                show_fields:
+                    - event.dataset
+            Top leftover hosts:
+                group_by: host.name
+                show_fields:
+                    - host.name

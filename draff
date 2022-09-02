@@ -1,0 +1,589 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * @file
+ * Produces a daily log summary.
+ */
+
+ini_set('error_reporting', E_ALL);
+ini_set('display_errors', true);
+ini_set('memory_limit', 2 * 1024 * 1024 * 1024);
+
+define('NULL_STRING', '𝑛𝑢𝑙𝑙');  // Make null values look distinct, in both plaintext and HTML output.
+
+function progress(int $current, int $total) {
+  if (!posix_isatty(STDOUT))
+    return;
+
+  $width = 80;
+  $progress = (int)(($current / $total) * $width);
+  echo "\rParsing…  " . str_repeat('▓', $progress) . str_repeat('░', max(0, $width - $progress))
+    . '  ' . str_pad($current, strlen($total), ' ', STR_PAD_LEFT) . ' / ' . $total . ' events'
+    . '  (mem: ' . (int)(memory_get_usage() / 1024 / 1024) . ' MB)';
+}
+
+function printMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
+  global $html;
+
+  if ($html)
+    echo "<h3>$title</h3>\n<table>\n";
+  else
+    echo "    $title\n";
+
+  $headers = [];
+  $widths = [];
+  foreach ($data as $row)
+    foreach ($row as $key => $value) {
+      if (in_array($key, $ignoreKeys))
+        continue;
+      if (!in_array($key, $headers))
+        $headers[] = $key;
+      if (is_array($value))
+        $value = json_encode($value);
+      $width = max(mb_strlen($html ? strip_tags($key) : $key), mb_strlen($html ? strip_tags($value) : $value));
+      if (!isset($widths[$key]) || $width > $widths[$key])
+        $widths[$key] = $width;
+    }
+
+  $lastHeader = $headers[count($headers) - 1];
+  $headerLine = [];
+  foreach ($headers as $header)
+    $headerLine[] = $header === $lastHeader ? $header : str_pad($header == 'count' ? '' : $header, $widths[$header]);
+  if ($html)
+    echo '<tr><th>' . implode('</th><th>', $headerLine) . "</th></tr>\n";
+  else
+    echo '        ' . implode(' | ', $headerLine) . "\n";
+
+  $separatorLine = [];
+  foreach ($headers as $header)
+    $separatorLine[] = str_repeat('-', $widths[$header]);
+  if (!$html)
+    echo '        ' . implode(' | ', $separatorLine) . "\n";
+
+  foreach ($data as $row) {
+    $rowLine = [];
+    foreach ($row as $key => $value) {
+      if (in_array($key, $ignoreKeys))
+        continue;
+      $rowLine[] = $key === $lastHeader ? $value : str_pad($value, $value === NULL_STRING ? $widths[$key] + strlen($value) - mb_strlen($value) : $widths[$key], ' ', $alignments[$key] ?? STR_PAD_RIGHT);
+    }
+    if ($html)
+      echo '<tr><td>' . implode('</td><td>', $rowLine) . "</td></tr>\n";
+    else
+      echo '        ' . implode(' | ', $rowLine) . "\n";
+  }
+
+  if ($html)
+    echo "</table>\n";
+  echo "\n";
+}
+
+function truncate($string) : string {
+  global $html, $long;
+
+  $maxLength = ($html || $long) ? 1024 : 80;
+
+  if (strlen($string) <= $maxLength)
+    return $string;
+
+  return substr($string, 0, $maxLength) . '…';
+}
+
+/**
+ * Returns the value for the specified field.
+ *
+ * @param [Array] $event
+ * @param [String] $fieldPath A dot-separated field path (e.g. `event.type`).
+ * @return String If the event's value is an array, this function returns it as a JSON-encoded string.
+ */
+function getEventValue(Array $event, String $fieldPath) : String {
+  if ($fieldPath === 'client.geo.region_city') {
+    $region = getEventValue($event, 'client.geo.region_iso_code');
+    $city = getEventValue($event, 'client.geo.city_name');
+    if ($region !== NULL_STRING && $city !== NULL_STRING)
+      return "$region-$city";
+    if ($region !== NULL_STRING)
+      return $region;
+    $country = getEventValue($event, 'client.geo.country_iso_code');
+    if ($country !== NULL_STRING)
+      return $country;
+  }
+
+  $components = explode('.', $fieldPath);
+  $p = $event;
+  foreach ($components as $component)
+    if (isset($p[$component]))
+      $p = $p[$component];
+    else
+      return NULL_STRING;
+
+  if ($fieldPath === 'client.user.name' && is_array($p) && in_array('archive', $p)) {
+    unset($p[array_search('archive', $p)]);
+    $p = array_values($p);
+  }
+
+  if (is_array($p)) {
+    if (count($p) === 1)
+      $p = reset($p);
+    else {
+      global $html;
+      $p = json_encode($p, $html ? JSON_PRETTY_PRINT : 0);
+    }
+  }
+
+  global $config;
+  if (isset($config['rewrites'][$fieldPath]))
+    foreach ($config['rewrites'][$fieldPath] as $regexMatch => $regexReplacement)
+      $p = preg_replace("~$regexMatch~", $regexReplacement, $p);
+
+  return $p;
+}
+
+function setEventValue(Array &$event, String $fieldPath, $value) {
+  $dot = strpos($fieldPath, '.');
+  if ($dot !== false) {
+    $car = substr($fieldPath, 0, $dot);
+    $cdr = substr($fieldPath, $dot + 1);
+    if (!isset($event[$car]))
+      $event[$car] = [];
+    setEventValue($event[$car], $cdr, $value);
+  }
+  else
+    $event[$fieldPath] = $value;
+}
+
+/**
+ * Returns true if the event matches all of the regexes in the group.
+ *
+ * @param [Array] $regexGroup The array's key is the dot-separated field path (e.g. `event.type`), and the value is a regex that that field path should match.
+ * @return bool
+ */
+function eventMatchesRegexGroup(Array $event, Array $regexGroup) : bool {
+  foreach ($regexGroup as $fieldPath => $fieldValueRegex)
+    if (!preg_match("~$fieldValueRegex~", getEventValue($event, $fieldPath)))
+      return false;
+
+  return true;
+}
+
+/**
+ * Returns a new event that contains only the elements used in this summary's charts,
+ * in order to reduce peak memory usage.
+ */
+function pruneEvent(&$event, $summaryConfig) {
+  $fieldsUsed = [ '_id', '_index' ];
+  foreach ($summaryConfig['charts'] as $chartConfig) {
+    $groupByField = $chartConfig['group_by'] ?? 'message';
+    $showFields = $chartConfig['show_fields'] ?? (is_array($groupByField) ? $groupByField : [$groupByField]);
+    if (is_array($groupByField))
+      $fieldsUsed = array_merge($fieldsUsed, $groupByField);
+    else
+      $fieldsUsed[] = $groupByField;
+    $fieldsUsed = array_merge($fieldsUsed, $showFields);
+  }
+  $fieldsUsed = array_unique($fieldsUsed);
+
+  $prunedEvent = [];
+  foreach ($fieldsUsed as $fieldPath) {
+    $value = getEventValue($event, $fieldPath);
+    if ($value !== NULL_STRING)
+      setEventValue($prunedEvent, $fieldPath, $value);
+  }
+
+  return $prunedEvent;
+}
+
+function parseEvent($event, &$eventsGrouped, $summarizeOnly) {
+  if (empty($event))
+    return;
+
+  if (isset($event['message'])) {
+    $m = $event['message'];
+    if (is_array($m))
+      $m = reset($m);
+  }
+
+  $timestamp = DateTimeImmutable::createFromFormat(DateTimeInterface::RFC3339_EXTENDED, $event['@timestamp']);
+  if (!$timestamp) {
+    $timestamp = DateTimeImmutable::createFromFormat(DateTimeInterface::RFC3339, $event['@timestamp']);
+    if (!$timestamp) {
+      $timestamp = new DateTimeImmutable($event['@timestamp']);
+      if (!$timestamp)
+        error_log("\nwarning: couldn't parse timestamp: " . $event['@timestamp']);
+    }
+  }
+
+  $localtime = $timestamp->setTimezone(new DateTimeZone('America/New_York'));
+
+  global $config;
+  $event['_index'] = $localtime->format($config['elasticsearch_index_date_format']);
+
+  global $firstTimestamp, $lastTimestamp;
+  if ($localtime < $firstTimestamp)
+    $firstTimestamp = $localtime;
+  if ($localtime > $lastTimestamp)
+    $lastTimestamp = $localtime;
+
+  // Match this event to a summary.
+  global $config;
+  foreach ($config['summaries'] as $summaryName => $summaryConfig) {
+    if (!empty($summarizeOnly) && $summaryName !== 'ℹ️  Other' && !preg_match("~$summarizeOnly~", $summaryName))
+      continue;
+
+    if (!isset($summaryConfig['select'])) {
+      $event = pruneEvent($event, $summaryConfig);
+      $eventsGrouped[$summaryName][] = $event;
+      return;
+    }
+
+    $matchedThisSummary = false;
+    foreach ($summaryConfig['select'] as $regexGroup) {
+      if (eventMatchesRegexGroup($event, $regexGroup)) {
+        $matchedThisSummary = true;
+        break;
+      }
+    }
+    if ($matchedThisSummary) {
+      $event = pruneEvent($event, $summaryConfig);
+      $eventsGrouped[$summaryName][] = $event;
+      return;
+    }
+  }
+}
+
+function parseLog($filepath, &$eventsGrouped, &$eventCount, $summarizeOnly) {
+  $fh = fopen($filepath, 'r');
+  $eventCount = 0;
+  while (!feof($fh) && fgets($fh))
+    ++$eventCount;
+  fseek($fh, 0);
+
+  global $firstTimestamp, $lastTimestamp;
+  $firstTimestamp = new DateTimeImmutable('9999-01-01');
+  $lastTimestamp  = new DateTimeImmutable('2000-01-01');
+
+  $lineIndex = 0;
+  while (!feof($fh)) {
+    if ($lineIndex % 1000 == 0)
+      progress($lineIndex, $eventCount);
+    parseEvent(json_decode(fgets($fh), true), $eventsGrouped, $summarizeOnly);
+    ++$lineIndex;
+  }
+  fclose($fh);
+  progress($lineIndex - 1, $eventCount);
+  echo "\n";
+}
+
+function groupEventsByField($events, $groupByField) {
+  $groupedEvents = [];
+  foreach ($events as $event) {
+    if (is_array($groupByField)) {
+      $groupByFieldValue = [];
+      foreach ($groupByField as $field)
+        $groupByFieldValue[] = getEventValue($event, $field);
+    }
+    else
+      $groupByFieldValue = getEventValue($event, $groupByField);
+    if (is_array($groupByFieldValue))
+      $groupByFieldValue = json_encode($groupByFieldValue);
+
+    if (isset($groupedEvents[$groupByFieldValue]))
+      ++$groupedEvents[$groupByFieldValue]['count'];
+    else
+      $groupedEvents[$groupByFieldValue] = [
+        'count' => 1,
+        'exampleEvent' => $event,
+      ];
+  }
+
+  return $groupedEvents;
+}
+
+function annotateValue($value) {
+  global $config;
+  foreach ($config['annotations'] as $annotateRegex => $annotateLink)
+    $value = preg_replace_callback("~{$annotateRegex}~", function ($matches) use ($annotateLink) {
+      return '<a href="' . $annotateLink . '" class="annotate">' . $matches[0] . '&nbsp;📎</a></span>';
+    }, $value);
+
+  return $value;
+}
+
+function showChart($summaryConfig, $chartName, $chartConfig, $events) {
+  global $config;
+  global $html;
+  $times = $html ? '×' : 'x';
+
+  $count = $chartConfig['count'] ?? (!empty($summaryConfig['concern']) ? 1000 : 5);
+  $groupByField = $chartConfig['group_by'] ?? 'message';
+  $showFields = $chartConfig['show_fields'] ?? (is_array($groupByField) ? $groupByField : [$groupByField]);
+
+  $groupedEvents = groupEventsByField($events, $groupByField);
+
+  if (!empty($summaryConfig['select'])) {
+    $kibanaQueryComponents = [];
+    foreach ($summaryConfig['select'] as $regexGroup) {
+      $q = [];
+      foreach ($regexGroup as $fieldPath => $fieldValueRegex) {
+        // Elasticsearch doesn't seem to support anchors, so try it without them.
+        $fieldValueRegex = preg_replace('/^\^|\$$/', '', $fieldValueRegex);
+
+        // Guess whether we need to treat it as a regex, or whether we can just use a plaintext phrase query (more efficient, and supports multi-word phrases).
+        if (strpbrk($fieldValueRegex, '()[]<>|.*+?:\\') !== false)
+          $q[] = "$fieldPath:/$fieldValueRegex/";
+        else
+          $q[] = "$fieldPath:\"$fieldValueRegex\"";
+      }
+
+      if (count($q) > 1)
+        $kibanaQueryComponents[] = '(' . implode(' AND ', $q) . ')';
+      else
+        $kibanaQueryComponents[] = $q[0];
+    }
+
+    // Make all the columns narrow except the last one, which is typically a long message.
+    $columnWidths = ['\'@timestamp\':(width:180)'];
+    foreach (array_slice($showFields, 0, -1) as $field)
+      $columnWidths[] = $field . ':(width:180)';
+
+    $kibanaURL = $config['kibana_base_url'] . '/app/discover#/'
+      . '?_g=(time:(from:now-1d/d,to:now-1d/d),refreshInterval:(pause:!t))'
+      . '&_a=('
+        . 'columns:!(' . urlencode(implode(',', $showFields)) . '),'
+        . 'grid:(columns:(' . urlencode(implode(',', $columnWidths)) . ')),'
+        . 'filters:!((meta:(negate:!t),query:(match_phrase:(tags:exclude_from_daily_summary)))),'
+        . 'query:(language:lucene,query:\'' . urlencode(implode(' OR ', $kibanaQueryComponents)) . '\')'
+      . ')';
+  }
+
+  $title = $chartName;
+  if ($html && !empty($kibanaURL))
+    $title = "<a href=\"$kibanaURL\">$title</a>";
+  if (count($groupedEvents) > $count)
+    $title .= $html ? " <small>top $count</small>" : " (top $count)";
+
+  if (isset($chartConfig['sort_by'])) {
+    $sortBy = explode(' ', $chartConfig['sort_by']);
+    if ($sortBy[0] === 'show_fields') {
+      // Sort by each of the shown fields, in order:
+      $sortBy = [$chartConfig['show_fields'], 'ascending'];
+      uasort($groupedEvents, function ($a, $b) use ($sortBy) {
+        foreach ($sortBy[0] as $field) {
+          $av = getEventValue($a['exampleEvent'], $field);
+          $bv = getEventValue($b['exampleEvent'], $field);
+          if ($av < $bv)
+            return $sortBy[1] === 'descending' ?  1 : -1;
+          else if ($av > $bv)
+            return $sortBy[1] === 'descending' ? -1 :  1;
+          // else continue to compare the next field in show_fields…
+        }
+      });
+    }
+    else {
+      // Sort by a specific field:
+      $sortBy[0] = [$sortBy[0]];
+      uasort($groupedEvents, function ($a, $b) use ($sortBy) {
+        $av = getEventValue($a['exampleEvent'], $sortBy[0][0]);
+        $bv = getEventValue($b['exampleEvent'], $sortBy[0][0]);
+        if ($av < $bv)
+          return $sortBy[1] === 'descending' ?  1 : -1;
+        else if ($av > $bv)
+          return $sortBy[1] === 'descending' ? -1 :  1;
+        else
+          // Always secondary-sort by count.
+          return -($a['count'] <=> $b['count']);
+      });
+    }
+  }
+  else {
+    // Default to sorting by count:
+    $sortBy = [['count'], 'descending'];
+    uasort($groupedEvents, function ($a, $b) {
+      return -($a['count'] <=> $b['count']);
+    });
+  }
+
+  $tableData = [];
+  foreach (array_slice($groupedEvents, 0, $count) as $bucketName => $bucketData) {
+    $rowCountLabel = $bucketData['count'] . $times;
+    if ($html && !empty($bucketData['exampleEvent']['_id'])) {
+      $rowCountLabelLen = mb_strlen($rowCountLabel);
+      $kibanaURL = $config['kibana_base_url'] . '/app/discover#/doc/' . $config['elasticsearch_data_view_id'] . '/' . $bucketData['exampleEvent']['_index'] . '?id=' . $bucketData['exampleEvent']['_id'];
+      $rowCountLabel = "<a href='{$kibanaURL}'>{$rowCountLabel}</a>";
+
+      // Make the columns line up when copying from the email and pasting in a text editor.
+      $rowCountLabel = str_repeat(' ', 6 - $rowCountLabelLen) . $rowCountLabel;
+    }
+
+    $row = [ 'count' => $rowCountLabel ];
+    if (count($showFields) === 1 && $showFields[0] == $groupByField)
+      $row[is_array($groupByField) ? json_encode($groupByField) : $groupByField] = truncate($bucketName);
+    else {
+      foreach ($showFields as $fieldName) {
+        $suffix = '';
+        if (in_array($fieldName, $sortBy[0]))
+          $suffix .= ($html ? '&nbsp;' : ' ') . ($sortBy[1] === 'descending' ? '⯆' : '⯅');
+        if ((is_array($groupByField) && !in_array($fieldName, $groupByField))
+          || (!is_array($groupByField) && $fieldName !== $groupByField))
+          $suffix .= $html ? '<br><small>(poly)</small>' : ' (poly)';
+
+        $fieldValue = getEventValue($bucketData['exampleEvent'], $fieldName);
+
+        if ($fieldName === 'event.duration')
+          // Convert nanoseconds to seconds
+          $fieldValue = number_format(((double)$fieldValue) / 1.e9, 3) . ' sec';
+
+        if (is_array($fieldValue))
+          $fieldValue = json_encode($fieldValue, $html ? JSON_PRETTY_PRINT : 0);
+
+        if ($html) {
+          if ($fieldValue === NULL_STRING)
+            $fieldValue = '<small>' . NULL_STRING . '</small>';
+          else {
+            $fieldValue = htmlspecialchars($fieldValue);
+            $fieldValue = annotateValue($fieldValue);
+          }
+        }
+        else
+          $fieldValue = str_replace("\n", '\n', $fieldValue);
+
+        $row[$fieldName . $suffix] = truncate($fieldValue);
+      }
+    }
+    $tableData[] = $row;
+  }
+
+  printMarkdownTable($title, $tableData, [], ['count' => STR_PAD_LEFT]);
+}
+
+function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
+  global $firstTimestamp, $lastTimestamp, $html, $config;
+
+  $timeFormat = 'Y-m-d H:i:s';
+  global $html;
+  if ($html) {
+    echo "<table>\n";
+    echo '<tr><th>First event</th><td>' . $firstTimestamp->format($timeFormat) . "</td></tr>\n";
+    echo '<tr><th>Last event</th><td>' . $lastTimestamp->format($timeFormat) . "</td></tr>\n";
+    echo "</table><br>\n";
+  }
+  else {
+    echo 'First event: ' . $firstTimestamp->format($timeFormat) . "\n";
+    echo 'Last event:  ' . $lastTimestamp->format($timeFormat) . "\n\n";
+  }
+
+  foreach ($config['summaries'] as $summaryName => $summaryConfig) {
+    if (!isset($eventsGrouped[$summaryName]))
+      continue;
+
+    if (!empty($showOnly) && !preg_match('@' . $showOnly . '@', $summaryName))
+      continue;
+
+    $class = !empty($summaryConfig['concern']) ? 'concern' : '';
+    $eventCount = count($eventsGrouped[$summaryName]);
+    $percent = ($eventCount / $totalEventCount > 0.1) ? (' (' . (int)($eventCount / $totalEventCount * 100) . '%)') : '';
+
+    if ($html)
+      echo "\n<article class='$class'><h2>$summaryName <small style='user-select: none;'>" . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "</small></h2>\n";
+    else
+      echo "\n$summaryName: " . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "\n";
+
+    foreach ($summaryConfig['charts'] as $chartName => $chartConfig)
+      showChart($summaryConfig, $chartName, $chartConfig, $eventsGrouped[$summaryName]);
+
+    if ($html)
+      echo "</article>\n";
+  }
+}
+
+
+global $config;
+$config = yaml_parse_file('draff.yaml');
+if (!$config)
+  return;
+
+function usage() {
+  $app = basename($GLOBALS['argv'][0]);
+  die("{$app}: Inputs logs, outputs a daily email summary.\n"
+    . "\n"
+    . "Usage: \n"
+    . "    {$app} [--yesterday|--today|--date='-2 days'|--log=/var/log/logstash/dump-20220705.ndjson] [--html] [--email] [--show-only=partialNameOfASummary]\n");
+}
+
+$longopts = [
+  # Log file selection:
+  'yesterday',
+  'today',
+  'date:',
+  'log:',
+
+  # Analysis:
+  'summarize-only:',
+
+  # Output:
+  'html',
+  'email',
+  'long',
+  'show-only:',
+];
+$options = getopt('', $longopts);
+if (empty($options))
+  usage();
+
+if (isset($options['yesterday']) || isset($options['today'])) {
+  $logDate = date('Ymd', isset($options['yesterday']) ? strtotime('-1 day') : time());
+  $logfile = sprintf($config['logfile'], $logDate);
+}
+else if (isset($options['date'])) {
+  $logDate = date('Ymd', strtotime($options['date']));
+  $logfile = sprintf($config['logfile'], $logDate);
+}
+else if (isset($options['log']))
+  $logfile = $options['log'];
+else
+  usage();
+
+$html  = isset($options['html']);
+$email = isset($options['email']);
+$long  = isset($options['long']);
+
+$eventsGrouped = [];
+parseLog($logfile, $eventsGrouped, $eventCount, $options['summarize-only'] ?? '');
+
+if ($email) {
+  if (posix_isatty(STDOUT))
+    echo 'Generating…';
+  ob_start();
+}
+
+if ($html)
+  echo '
+    <style type="text/css">
+      a { color: #126; }
+      article { background-color: #f8f8f8; border-radius: 1em; padding: 1em; margin-bottom: 2em; }
+      article.concern, article.concern table th { background-color: #ffd; }
+      h2 { margin: 0; }
+      h3 { opacity: 0.5; border-bottom: 1px solid silver; margin-top: 1em; }
+      h2 small, h3 small { background-color: rgba(0,0,0,0.2); border-radius: 1em; padding: 0.5em; }
+      small { opacity: 0.5; font-size: 70%; font-weight: normal; }
+      pre { white-space: pre-wrap; }
+      article table th { position: sticky; top: 0; text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 0 1em 0 0; }
+      article table th:first-child { border-bottom: none; width: 4em; }
+      article table td { vertical-align: baseline; word-break: break-all; white-space: pre-wrap; min-width: 5em; padding: 0 1em 0 0; font-variant-numeric: tabular-nums; }
+      article table td:first-child { text-align: right; min-width: 4em; opacity: 0.5; }
+      a.annotate { border: 1px solid rgba(128,128,255,0.4); border-radius: 0.3em; background-color: rgba(128,128,255,0.2) }
+    </style>
+  ';
+
+showSummaries($eventsGrouped, $eventCount, $options['show-only'] ?? '');
+
+if ($email) {
+  $body = ob_get_contents();
+  ob_end_clean();
+  if (posix_isatty(STDOUT))
+     echo "\nSending…";
+  mail(implode(', ', $config['email_to']), $config['email_subject'], $body, $html ? 'Content-Type: text/html; charset=UTF-8' : []);
+  if (posix_isatty(STDOUT))
+    echo "\n";
+}
