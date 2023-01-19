@@ -441,39 +441,38 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
     }
 
     $row = [ 'count' => $rowCountLabel ];
-    if (count($showFields) === 1 && $showFields[0] == $groupByField)
-      $row[is_array($groupByField) ? json_encode($groupByField) : $groupByField] = truncate($bucketName);
-    else {
-      foreach ($showFields as $fieldName) {
-        $suffix = '';
-        if (in_array($fieldName, $sortBy[0]))
-          $suffix .= ($html ? '&nbsp;' : ' ') . ($sortBy[1] === 'descending' ? '⯆' : '⯅');
-        if ((is_array($groupByField) && !in_array($fieldName, $groupByField))
-          || (!is_array($groupByField) && $fieldName !== $groupByField))
-          $suffix .= $html ? '<br><small>(poly)</small>' : ' (poly)';
+    foreach ($showFields as $fieldName) {
+      $suffix = '';
+      if (in_array($fieldName, $sortBy[0]))
+        $suffix .= ($html ? '&nbsp;' : ' ') . ($sortBy[1] === 'descending' ? '⯆' : '⯅');
+      if ((is_array($groupByField) && !in_array($fieldName, $groupByField))
+        || (!is_array($groupByField) && $fieldName !== $groupByField))
+        $suffix .= $html ? '<br><small>(poly)</small>' : ' (poly)';
 
-        $fieldValue = getEventValue($bucketData['exampleEvent'], $fieldName);
+      $fieldValue = getEventValue($bucketData['exampleEvent'], $fieldName);
 
-        if ($fieldName === 'event.duration')
-          // Convert nanoseconds to seconds
-          $fieldValue = number_format(((double)$fieldValue) / 1.e9, 3) . ' sec';
+      if ($fieldName === 'event.duration')
+        // Convert nanoseconds to seconds
+        $fieldValue = number_format(((double)$fieldValue) / 1.e9, 3) . ' sec';
 
-        if (is_array($fieldValue))
-          $fieldValue = json_encode($fieldValue, $html ? JSON_PRETTY_PRINT : 0);
+      if (is_array($fieldValue))
+        $fieldValue = json_encode($fieldValue, $html ? JSON_PRETTY_PRINT : 0);
+      else
+        // Decode hex escapes into Unicode characters (e.g. `\xd1\x81\xd0\xb0\xd0\xb9\xd1\x82` -> `сайт`).
+        $fieldValue = stripcslashes($fieldValue);
 
-        if ($html) {
-          if ($fieldValue === NULL_STRING)
-            $fieldValue = '<small>' . NULL_STRING . '</small>';
-          else
-            $fieldValue = htmlspecialchars($fieldValue);
-        }
+      if ($html) {
+        if ($fieldValue === NULL_STRING)
+          $fieldValue = '<small>' . NULL_STRING . '</small>';
         else
-          $fieldValue = str_replace("\n", '\n', $fieldValue);
-
-        $fieldValue = annotateValue($fieldValue);
-
-        $row[$fieldName . $suffix] = truncate($fieldValue);
+          $fieldValue = htmlspecialchars($fieldValue);
       }
+      else
+        $fieldValue = str_replace("\n", '\n', $fieldValue);
+
+      $fieldValue = annotateValue($fieldValue);
+
+      $row[$fieldName . $suffix] = truncate($fieldValue);
     }
     $tableData[] = $row;
   }
