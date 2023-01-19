@@ -538,7 +538,7 @@ function usage() {
   die("{$app}: Inputs logs, outputs a daily email summary.\n"
     . "\n"
     . "Usage: \n"
-    . "    {$app} [--yesterday|--today|--date='-2 days'|--log=/var/log/logstash/dump-20220705.ndjson] [--html] [--email] [--show-only=partialNameOfASummary]\n");
+    . "    {$app} [--yesterday|--today|--date='-2 days'|--log=someLogFilePath] [--html] [--email] [--email-to=someAddress] [--show-only=partialNameOfASummary]\n");
 }
 
 $longopts = [
@@ -554,8 +554,10 @@ $longopts = [
   # Output:
   'html',
   'email',
+  'email-to:',
   'long',
   'show-only:',
+  'filter:',
 ];
 $options = getopt('', $longopts);
 if (empty($options))
@@ -582,6 +584,7 @@ $eventsGrouped = [];
 parseLog($logfile, $eventsGrouped, $eventCount, $options['summarize-only'] ?? '');
 
 if ($email) {
+  $email_to = $options['email-to'] ?? implode(', ', $config['email_to']);
   if (posix_isatty(STDOUT))
     echo 'Generating…';
   ob_start();
@@ -613,14 +616,14 @@ if ($html)
       </style>
   ';
 
-showSummaries($eventsGrouped, $eventCount, $options['show-only'] ?? '');
+showSummaries($eventsGrouped, $eventCount, $options['show-only'] ?? $options['filter'] ?? '');
 
 if ($email) {
   $body = ob_get_contents();
   ob_end_clean();
   if (posix_isatty(STDOUT))
      echo "\nSending…";
-  mail(implode(', ', $config['email_to']), $config['email_subject'], $body, $html ? 'Content-Type: text/html; charset=UTF-8' : []);
+  mail($email_to, $config['email_subject'], $body, $html ? 'Content-Type: text/html; charset=UTF-8' : []);
   if (posix_isatty(STDOUT))
     echo "\n";
 }
