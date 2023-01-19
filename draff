@@ -512,6 +512,13 @@ function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
     else
       echo "\n$summaryName: " . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "\n";
 
+    if (isset($summaryConfig['description'])) {
+      if ($html)
+        echo "<p class='description'>{$summaryConfig['description']}</p>\n";
+      else
+        echo"{$summaryConfig['description']}\n";
+    }
+
     foreach ($summaryConfig['charts'] as $chartName => $chartConfig)
       showChart($summaryConfig, $chartName, $chartConfig, $eventsGrouped[$summaryName]);
 
@@ -587,11 +594,14 @@ if ($html)
       article { background-color: #f8f8f8; border-radius: 1em; padding: 1em; margin-bottom: 2em; }
       article.concern, article.concern table th { background-color: #ffd; }
       h2 { margin: 0; }
-      h3 { opacity: 0.5; border-bottom: 1px solid silver; margin-top: 1em; }
+      h3 { border-bottom: 1px solid silver; margin-top: 1em; }
+      h3 .content { opacity: 0.5; }
+      h3 a { text-decoration: none; }
       h2 small, h3 small { background-color: rgba(0,0,0,0.2); border-radius: 1em; padding: 0.5em; }
+      article p.description { opacity: 0.5; max-width: 40em; }
       small { opacity: 0.5; font-size: 70%; font-weight: normal; }
       pre { white-space: pre-wrap; }
-      article table th { position: sticky; top: 0; text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 0 1em 0 0; }
+      article table th { text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 0 1em 0 0; }
       article table th:first-child { border-bottom: none; width: 4em; }
       article table td { vertical-align: baseline; word-break: break-all; white-space: pre-wrap; min-width: 5em; padding: 0 1em 0 0; font-variant-numeric: tabular-nums; }
       article table td:first-child { text-align: right; min-width: 4em; }

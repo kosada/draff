@@ -64,6 +64,9 @@ annotations:
 summaries:
     # Example: summarize HTTP 404 errors:
     🕷 HTTP 404 not found:  # This is the display name of this summary block.
+        # The description is shown between the title and the first chart.
+        # Potentially useful for suggesting next steps to take based on the chart data.
+        description: If there are many requests for the same path, consider adding a redirect.
         select:
             # `select` is an array of hashes.
             # The outer array is ORred;
@@ -101,6 +104,7 @@ summaries:
 
     # Example: summarize IMAP logins:
     📬 IMAP Login:
+        description: If there are many failed attempts from a single IP, consider blocking that IP.
         select:
             - log.syslog.identifier: ^dovecot$
               process.name: ^imap-login$
@@ -118,6 +122,7 @@ summaries:
 
     🕷 HTTP 5xx server error:
         concern: true  # This causes the summary block to be highlighted in yellow, indicating that any messages here are potentially concerning.
+        description: Fix these.
         select:
             - event.dataset: ^apache.access$
               http.response.status_code: ^5
@@ -137,6 +142,7 @@ summaries:
     # It doesn't have a `select`,
     # so it collects all events that weren't already processed by preceding summaries.
     ℹ️ Other:
+        description: 'Goal: either fix, or weed out (in the Logstash filter configuration), or categorize (above) these log messages, to keep this section empty.'
         charts:
             Grouped by message:
                 group_by: message
