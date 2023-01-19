@@ -291,8 +291,12 @@ function groupEventsByField($events, $groupByField) {
     if (is_array($groupByFieldValue))
       $groupByFieldValue = json_encode($groupByFieldValue);
 
-    if (isset($groupedEvents[$groupByFieldValue]))
+    if (isset($groupedEvents[$groupByFieldValue])) {
       ++$groupedEvents[$groupByFieldValue]['count'];
+      // For the 'representative document', sometimes show events other than the first event.
+      if (rand(0, 100) > 80)
+        $groupedEvents[$groupByFieldValue]['exampleEvent'] = $event;
+    }
     else
       $groupedEvents[$groupByFieldValue] = [
         'count' => 1,
