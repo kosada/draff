@@ -304,7 +304,12 @@ function annotateValue($value) {
   global $config;
   foreach ($config['annotations'] as $annotateRegex => $annotateLink)
     $value = preg_replace_callback("~{$annotateRegex}~", function ($matches) use ($annotateLink) {
-      return '<a href="' . $annotateLink . '" class="annotate">' . $matches[0] . '&nbsp;📎</a></span>';
+      global $html;
+      if ($html)
+        return '<a href="' . $annotateLink . '" class="annotate"><span class="tooltip" title="Annotation: ' . $annotateLink . '">' . $matches[0] . '&nbsp;📎</span></a>';
+      else
+        return "\e]8;;" . $annotateLink . "\e\\" . $matches[0] . " 📎\e]8;;\e\\";
+
     }, $value);
 
   return $value;
@@ -440,13 +445,13 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
         if ($html) {
           if ($fieldValue === NULL_STRING)
             $fieldValue = '<small>' . NULL_STRING . '</small>';
-          else {
+          else
             $fieldValue = htmlspecialchars($fieldValue);
-            $fieldValue = annotateValue($fieldValue);
-          }
         }
         else
           $fieldValue = str_replace("\n", '\n', $fieldValue);
+
+        $fieldValue = annotateValue($fieldValue);
 
         $row[$fieldName . $suffix] = truncate($fieldValue);
       }
@@ -571,9 +576,13 @@ if ($html)
       article table th { position: sticky; top: 0; text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 0 1em 0 0; }
       article table th:first-child { border-bottom: none; width: 4em; }
       article table td { vertical-align: baseline; word-break: break-all; white-space: pre-wrap; min-width: 5em; padding: 0 1em 0 0; font-variant-numeric: tabular-nums; }
-      article table td:first-child { text-align: right; min-width: 4em; opacity: 0.5; }
-      a.annotate { border: 1px solid rgba(128,128,255,0.4); border-radius: 0.3em; background-color: rgba(128,128,255,0.2) }
-    </style>
+      article table td:first-child { text-align: right; min-width: 4em; }
+      article table td:first-child .content { opacity: 0.5; }
+      a.annotate { border: 1px solid rgba(128,128,255,0.2); border-radius: 0.3em; background-color: rgba(128,128,255,0.2); padding: .1em .2em; text-decoration: none; }
+      .tooltip { position: relative; }
+      .tooltip:before { display: none; content: attr(title); position: absolute; left: 0; bottom: 2em; padding: .5em; background-color: rgba(255,255,255,.95); color: #000; box-shadow: 0 5px 5px rgba(0,0,0,.2); border-radius: .2em; font-size: 9pt; width: max-content; max-width: 40em; font-weight: normal; }
+      .tooltip:hover:before { display: block; z-index: 100; }
+      </style>
   ';
 
 showSummaries($eventsGrouped, $eventCount, $options['show-only'] ?? '');
