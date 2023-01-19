@@ -327,24 +327,33 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
   $groupedEvents = groupEventsByField($events, $groupByField);
 
   if (!empty($summaryConfig['select'])) {
-    $kibanaQueryComponents = [];
-    foreach ($summaryConfig['select'] as $regexGroup) {
-      $q = [];
-      foreach ($regexGroup as $fieldPath => $fieldValueRegex) {
-        // Elasticsearch doesn't seem to support anchors, so try it without them.
-        $fieldValueRegex = preg_replace('/^\^|\$$/', '', $fieldValueRegex);
+    if (!empty($summaryConfig['kibana_query']))
+      $kibanaQueryComponents = [ $summaryConfig['kibana_query'] ];
+    else {
+      $kibanaQueryComponents = [];
+      foreach ($summaryConfig['select'] as $regexGroup) {
+        $q = [];
+        foreach ($regexGroup as $fieldPath => $fieldValueRegex) {
+          // Elasticsearch doesn't seem to support anchors, so try it without them.
+          $fieldValueRegex = preg_replace('/^\^|\$$/', '', $fieldValueRegex);
 
-        // Guess whether we need to treat it as a regex, or whether we can just use a plaintext phrase query (more efficient, and supports multi-word phrases).
-        if (strpbrk($fieldValueRegex, '()[]<>|.*+?:\\') !== false)
-          $q[] = "$fieldPath:/$fieldValueRegex/";
+          // Guess whether we need to treat it as a regex, or whether we can just use a plaintext phrase query (more efficient, and supports multi-word phrases).
+          if (strpbrk($fieldValueRegex, '()[]<>|.*+?:\\') !== false)
+            $q[] = "$fieldPath:/$fieldValueRegex/";
+          else {
+            // Guess whether we need to quote the value.
+            if (strpos($fieldValueRegex, ' ') === false)
+              $q[] = "$fieldPath:$fieldValueRegex";
+            else
+              $q[] = "$fieldPath:\"$fieldValueRegex\"";
+          }
+        }
+
+        if (count($q) > 1)
+          $kibanaQueryComponents[] = '(' . implode(' AND ', $q) . ')';
         else
-          $q[] = "$fieldPath:\"$fieldValueRegex\"";
+          $kibanaQueryComponents[] = $q[0];
       }
-
-      if (count($q) > 1)
-        $kibanaQueryComponents[] = '(' . implode(' AND ', $q) . ')';
-      else
-        $kibanaQueryComponents[] = $q[0];
     }
 
     // Make all the columns narrow except the last one, which is typically a long message.

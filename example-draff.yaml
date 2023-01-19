@@ -96,6 +96,8 @@ summaries:
                     - client.domain
                     - server.domain
                     - url.path
+        # Draff automatically converts the `select` query into a link to Kibana Discover.  If the automatically-generated query is inadequate, you can optionally override it:
+        kibana_query: 'drupal.type:"page not found" OR (event.dataset:apache.access AND http.response.status_code:404)'
 
     # Example: summarize IMAP logins:
     📬 IMAP Login:
