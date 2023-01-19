@@ -380,7 +380,7 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
 
   $title = $chartName;
   if ($html && !empty($kibanaURL))
-    $title = "<a href=\"$kibanaURL\">$title</a>";
+    $title = "<a href=\"$kibanaURL\"><span class='tooltip' title=\"Kibana Discover query: " . htmlspecialchars(implode(' OR ', $kibanaQueryComponents)) . "\"><span class='content'>$title</span></span></a>";
   if (count($groupedEvents) > $count)
     $title .= $html ? " <small>top $count</small>" : " (top $count)";
 
@@ -430,8 +430,11 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
     $rowCountLabel = $bucketData['count'] . $times;
     if ($html && !empty($bucketData['exampleEvent']['_id'])) {
       $rowCountLabelLen = mb_strlen($rowCountLabel);
-      $kibanaURL = $config['kibana_base_url'] . '/app/discover#/doc/' . $config['elasticsearch_data_view_id'] . '/' . $bucketData['exampleEvent']['_index'] . '?id=' . $bucketData['exampleEvent']['_id'];
-      $rowCountLabel = "<a href='{$kibanaURL}'>{$rowCountLabel}</a>";
+      $kibanaURL = $config['kibana_base_url'] . '/app/discover#/context/' . $config['elasticsearch_data_view_id'] . '/' . $bucketData['exampleEvent']['_id'];
+      if ($bucketData['count'] == 1)
+        $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show this document and its surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+      else
+        $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show a representative document and surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
 
       // Make the columns line up when copying from the email and pasting in a text editor.
       $rowCountLabel = str_repeat(' ', 6 - $rowCountLabelLen) . $rowCountLabel;
