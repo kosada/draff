@@ -388,7 +388,7 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
     $sortBy = explode(' ', $chartConfig['sort_by']);
     if ($sortBy[0] === 'show_fields') {
       // Sort by each of the shown fields, in order:
-      $sortBy = [$chartConfig['show_fields'], 'ascending'];
+      $sortBy = [$chartConfig['show_fields'], $sortBy[1]];
       uasort($groupedEvents, function ($a, $b) use ($sortBy) {
         foreach ($sortBy[0] as $field) {
           $av = getEventValue($a['exampleEvent'], $field);
