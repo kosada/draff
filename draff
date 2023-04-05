@@ -333,6 +333,16 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
 
   $groupedEvents = groupEventsByField($events, $groupByField);
 
+  if (isset($chartConfig['hide_groups_with_fewer_than'])) {
+    $hideGroupsWithFewerThan = $chartConfig['hide_groups_with_fewer_than'];
+    $origCount = count($groupedEvents);
+    $groupedEvents = array_filter($groupedEvents, function ($a) use ($hideGroupsWithFewerThan) {
+      return $a['count'] >= $hideGroupsWithFewerThan;
+    });
+    if ($origCount !== count($groupedEvents))
+      $hideGroupsWithFewerThan_removedItems = true;
+  }
+
   if (!empty($summaryConfig['select'])) {
     if (!empty($summaryConfig['kibana_query']))
       $kibanaQueryComponents = [ $summaryConfig['kibana_query'] ];
@@ -383,6 +393,8 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
     $title = "<a href=\"$kibanaURL\"><span class='tooltip' title=\"Kibana Discover query: " . htmlspecialchars(implode(' OR ', $kibanaQueryComponents)) . "\"><span class='content'>$title</span></span></a>";
   if (count($groupedEvents) > $count)
     $title .= $html ? " <small>top $count</small>" : " (top $count)";
+  if (!empty($hideGroupsWithFewerThan_removedItems))
+    $title .= $html ? " <small>≥ $hideGroupsWithFewerThan</small>" : " (≥ $hideGroupsWithFewerThan)";
 
   if (isset($chartConfig['sort_by'])) {
     $sortBy = explode(' ', $chartConfig['sort_by']);
