@@ -570,9 +570,10 @@ $longopts = [
   'long',
   'show-only:',
   'filter:',
+  'help',
 ];
 $options = getopt('', $longopts);
-if (empty($options))
+if (empty($options) || isset($options['help']))
   usage();
 
 if (isset($options['yesterday']) || isset($options['today'])) {
