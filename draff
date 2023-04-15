@@ -23,13 +23,17 @@ function progress(int $current, int $total) {
     . '  (mem: ' . (int)(memory_get_usage() / 1024 / 1024) . ' MB)';
 }
 
-function printMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
+function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
+  if (count($data) === 0)
+    return '';
+
   global $html;
 
+  $output = '';
   if ($html)
-    echo "<h3>$title</h3>\n<table>\n";
+    $output .= "<h3>$title</h3>\n<table>\n";
   else
-    echo "    $title\n";
+    $output .= "    $title\n";
 
   $headers = [];
   $widths = [];
@@ -51,15 +55,15 @@ function printMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
   foreach ($headers as $header)
     $headerLine[] = $header === $lastHeader ? $header : str_pad($header == 'count' ? '' : $header, $widths[$header]);
   if ($html)
-    echo '<tr><th>' . implode('</th><th>', $headerLine) . "</th></tr>\n";
+    $output .= '<tr><th>' . implode('</th><th>', $headerLine) . "</th></tr>\n";
   else
-    echo '        ' . implode(' | ', $headerLine) . "\n";
+    $output .= '        ' . implode(' | ', $headerLine) . "\n";
 
   $separatorLine = [];
   foreach ($headers as $header)
     $separatorLine[] = str_repeat('-', $widths[$header]);
   if (!$html)
-    echo '        ' . implode(' | ', $separatorLine) . "\n";
+    $output .= '        ' . implode(' | ', $separatorLine) . "\n";
 
   foreach ($data as $row) {
     $rowLine = [];
@@ -69,14 +73,16 @@ function printMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
       $rowLine[] = $key === $lastHeader ? $value : str_pad($value, $value === NULL_STRING ? $widths[$key] + strlen($value) - mb_strlen($value) : $widths[$key], ' ', $alignments[$key] ?? STR_PAD_RIGHT);
     }
     if ($html)
-      echo '<tr><td>' . implode('</td><td>', $rowLine) . "</td></tr>\n";
+      $output .= '<tr><td>' . implode('</td><td>', $rowLine) . "</td></tr>\n";
     else
-      echo '        ' . implode(' | ', $rowLine) . "\n";
+      $output .= '        ' . implode(' | ', $rowLine) . "\n";
   }
 
   if ($html)
-    echo "</table>\n";
-  echo "\n";
+    $output .= "</table>\n";
+  $output .= "\n";
+
+  return $output;
 }
 
 function truncate($string) : string {
@@ -322,7 +328,7 @@ function annotateValue($value) {
   return $value;
 }
 
-function showChart($summaryConfig, $chartName, $chartConfig, $events) {
+function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
   global $config;
   global $html;
   $times = $html ? '×' : 'x';
@@ -489,7 +495,7 @@ function showChart($summaryConfig, $chartName, $chartConfig, $events) {
     $tableData[] = $row;
   }
 
-  printMarkdownTable($title, $tableData, [], ['count' => STR_PAD_LEFT]);
+  return renderMarkdownTable($title, $tableData, [], ['count' => STR_PAD_LEFT]);
 }
 
 function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
@@ -519,23 +525,28 @@ function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
     $eventCount = count($eventsGrouped[$summaryName]);
     $percent = ($eventCount / $totalEventCount > 0.1) ? (' (' . (int)($eventCount / $totalEventCount * 100) . '%)') : '';
 
-    if ($html)
-      echo "\n<article class='$class'><h2>$summaryName <small style='user-select: none;'>" . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "</small></h2>\n";
-    else
-      echo "\n$summaryName: " . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "\n";
-
-    if (isset($summaryConfig['description'])) {
-      if ($html)
-        echo "<p class='description'>{$summaryConfig['description']}</p>\n";
-      else
-        echo"{$summaryConfig['description']}\n";
-    }
-
+    $renderedCharts = '';
     foreach ($summaryConfig['charts'] as $chartName => $chartConfig)
-      showChart($summaryConfig, $chartName, $chartConfig, $eventsGrouped[$summaryName]);
+      $renderedCharts .= renderChart($summaryConfig, $chartName, $chartConfig, $eventsGrouped[$summaryName]);
 
-    if ($html)
-      echo "</article>\n";
+    if (!empty($renderedCharts)) {
+      if ($html)
+        echo "\n<article class='$class'><h2>$summaryName <small style='user-select: none;'>" . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "</small></h2>\n";
+      else
+        echo "\n$summaryName: " . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "\n";
+
+      if (isset($summaryConfig['description'])) {
+        if ($html)
+          echo "<p class='description'>{$summaryConfig['description']}</p>\n";
+        else
+          echo"{$summaryConfig['description']}\n";
+      }
+
+      echo $renderedCharts;
+
+      if ($html)
+        echo "</article>\n";
+    }
   }
 }
 
