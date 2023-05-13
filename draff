@@ -23,6 +23,25 @@ function progress(int $current, int $total) {
     . '  (mem: ' . (int)(memory_get_usage() / 1024 / 1024) . ' MB)';
 }
 
+function renderHourOfDayHistogram($hourlyCounts) {
+  $max = 0;
+  for ($i = 0; $i <= 23; ++$i)
+    $max = max($max, $hourlyCounts[$i]);
+
+  $out = "<div class='hour-of-day-histogram'>";
+  for ($i = 0; $i <= 11; ++$i) {
+    $v = max(0, min(10, ceil($hourlyCounts[$i] / $max * 10)));
+    $out .= "<span class='value-$v'></span>";
+  }
+  $out .= "<span class='bar'></span>";
+  for ($i = 12; $i <= 23; ++$i) {
+    $v = max(0, min(10, ceil($hourlyCounts[$i] / $max * 10)));
+    $out .= "<span class='value-$v'></span>";
+  }
+  $out .= "</div>";
+  return $out;
+}
+
 function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
   if (count($data) === 0)
     return '';
@@ -53,7 +72,7 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
   $lastHeader = $headers[count($headers) - 1];
   $headerLine = [];
   foreach ($headers as $header)
-    $headerLine[] = $header === $lastHeader ? $header : str_pad($header == 'count' ? '' : $header, $widths[$header]);
+    $headerLine[] = $header === $lastHeader ? $header : str_pad(in_array($header, ['count', 'hourOfDayHistogram']) ? '' : $header, $widths[$header]);
   if ($html)
     $output .= '<tr><th>' . implode('</th><th>', $headerLine) . "</th></tr>\n";
   else
@@ -181,7 +200,7 @@ function eventMatchesRegexGroup(Array $event, Array $regexGroup) : bool {
  * in order to reduce peak memory usage.
  */
 function pruneEvent(&$event, $summaryConfig) {
-  $fieldsUsed = [ '_id', '_index' ];
+  $fieldsUsed = [ '_id', '_index', '_hourOfDay' ];
   foreach ($summaryConfig['charts'] as $chartConfig) {
     $groupByField = $chartConfig['group_by'] ?? 'message';
     $showFields = $chartConfig['show_fields'] ?? (is_array($groupByField) ? $groupByField : [$groupByField]);
@@ -224,6 +243,7 @@ function parseEvent($event, &$eventsGrouped, $summarizeOnly) {
   }
 
   $localtime = $timestamp->setTimezone(new DateTimeZone('America/New_York'));
+  $event['_hourOfDay'] = $localtime->format('G');
 
   global $config;
   $event['_index'] = $localtime->format($config['elasticsearch_index_date_format']);
@@ -284,6 +304,11 @@ function parseLog($filepath, &$eventsGrouped, &$eventCount, $summarizeOnly) {
   echo "\n";
 }
 
+/**
+ * Returns an array of events grouped by the specified field(s).
+ * Each grouped event contains a count of events in the group,
+ * a hour-of-day histogram, and a single representative document.
+ */
 function groupEventsByField($events, $groupByField) {
   $groupedEvents = [];
   foreach ($events as $event) {
@@ -299,15 +324,21 @@ function groupEventsByField($events, $groupByField) {
 
     if (isset($groupedEvents[$groupByFieldValue])) {
       ++$groupedEvents[$groupByFieldValue]['count'];
+      ++$groupedEvents[$groupByFieldValue]['hourOfDayHistogram'][$event['_hourOfDay']];
+
       // For the 'representative document', sometimes show events other than the first event.
       if (rand(0, 100) > 80)
         $groupedEvents[$groupByFieldValue]['exampleEvent'] = $event;
     }
-    else
+    else {
+      $hourOfDayHistogram = array_fill(0, 24, 0);
+      $hourOfDayHistogram[$event['_hourOfDay']] = 1;
       $groupedEvents[$groupByFieldValue] = [
         'count' => 1,
+        'hourOfDayHistogram' => $hourOfDayHistogram,
         'exampleEvent' => $event,
       ];
+    }
   }
 
   return $groupedEvents;
@@ -458,7 +489,10 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
       $rowCountLabel = str_repeat(' ', 6 - $rowCountLabelLen) . $rowCountLabel;
     }
 
-    $row = [ 'count' => $rowCountLabel ];
+    $row = [
+      'count' => $rowCountLabel,
+      'hourOfDayHistogram' => renderHourOfDayHistogram($bucketData['hourOfDayHistogram']),
+    ];
     foreach ($showFields as $fieldName) {
       $suffix = '';
       if (in_array($fieldName, $sortBy[0]))
@@ -629,15 +663,49 @@ if ($html)
       small { opacity: 0.5; font-size: 70%; font-weight: normal; }
       pre { white-space: pre-wrap; }
       article table th { text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 0 1em 0 0; }
-      article table th:first-child { border-bottom: none; width: 4em; }
+      article table th:first-child,
+      article table th:nth-child(2) {
+        border-bottom: none; width: 4em;
+      }
       article table td { vertical-align: baseline; word-break: break-all; white-space: pre-wrap; min-width: 5em; padding: 0 1em 0 0; font-variant-numeric: tabular-nums; }
-      article table td:first-child { text-align: right; min-width: 4em; }
+      article table td:first-child { text-align: right; }
+      article table td:first-child,
+      article table td:nth-child(2) {
+        min-width: 4em;
+      }
       article table td:first-child .content { opacity: 0.5; }
       a.annotate { border: 1px solid rgba(128,128,255,0.2); border-radius: 0.3em; background-color: rgba(128,128,255,0.2); padding: .1em .2em; text-decoration: none; }
       .tooltip { position: relative; }
       .tooltip:before { display: none; content: attr(title); position: absolute; left: 0; bottom: 2em; padding: .5em; background-color: rgba(255,255,255,.95); color: #000; box-shadow: 0 5px 5px rgba(0,0,0,.2); border-radius: .2em; font-size: 9pt; width: max-content; max-width: 40em; font-weight: normal; }
       .tooltip:hover:before { display: block; z-index: 100; }
-      </style>
+
+      .hour-of-day-histogram {
+        background: rgba(0,0,0,0.1);
+        display: inline-block;
+        border-left: 1px solid rgba(0,0,0,.1);
+        border-right: 1px solid rgba(0,0,0,.1);
+      }
+      .hour-of-day-histogram span {
+        width: 2px;
+        display: inline-block;
+        border-bottom: 0px solid #24b;
+      }
+      .hour-of-day-histogram .bar {
+        background: rgba(0,0,0,.1);
+        width: 1px;
+        height: 10px;
+      }
+      .hour-of-day-histogram .value-1  { border-bottom-width:  1px; }
+      .hour-of-day-histogram .value-2  { border-bottom-width:  2px; }
+      .hour-of-day-histogram .value-3  { border-bottom-width:  3px; }
+      .hour-of-day-histogram .value-4  { border-bottom-width:  4px; }
+      .hour-of-day-histogram .value-5  { border-bottom-width:  5px; }
+      .hour-of-day-histogram .value-6  { border-bottom-width:  6px; }
+      .hour-of-day-histogram .value-7  { border-bottom-width:  7px; }
+      .hour-of-day-histogram .value-8  { border-bottom-width:  8px; }
+      .hour-of-day-histogram .value-9  { border-bottom-width:  9px; }
+      .hour-of-day-histogram .value-10 { border-bottom-width: 10px; }
+    </style>
   ';
 
 showSummaries($eventsGrouped, $eventCount, $options['show-only'] ?? $options['filter'] ?? '');
