@@ -503,7 +503,7 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
 
       $fieldValue = getEventValue($bucketData['exampleEvent'], $fieldName);
 
-      if ($fieldName === 'event.duration')
+      if ($fieldName === 'event.duration' && $fieldValue !== NULL_STRING)
         // Convert nanoseconds to seconds
         $fieldValue = number_format(((double)$fieldValue) / 1.e9, 3) . ' sec';
 
