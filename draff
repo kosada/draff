@@ -489,10 +489,10 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
       $rowCountLabel = str_repeat(' ', 6 - $rowCountLabelLen) . $rowCountLabel;
     }
 
-    $row = [
-      'count' => $rowCountLabel,
-      'hourOfDayHistogram' => renderHourOfDayHistogram($bucketData['hourOfDayHistogram']),
-    ];
+    $row = ['count' => $rowCountLabel];
+    if ($html)
+      $row['hourOfDayHistogram'] = renderHourOfDayHistogram($bucketData['hourOfDayHistogram']);
+
     foreach ($showFields as $fieldName) {
       $suffix = '';
       if (in_array($fieldName, $sortBy[0]))
