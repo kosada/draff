@@ -561,7 +561,8 @@ function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
     if (!empty($showOnly) && !preg_match('@' . $showOnly . '@', $summaryName))
       continue;
 
-    $class = !empty($summaryConfig['concern']) ? 'concern' : '';
+    $concern = !empty($summaryConfig['concern']);
+    $class = $concern ? 'concern' : '';
     $eventCount = count($eventsGrouped[$summaryName]);
     $percent = ($eventCount / $totalEventCount > 0.1) ? (' (' . (int)($eventCount / $totalEventCount * 100) . '%)') : '';
 
@@ -572,8 +573,11 @@ function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
     if (!empty($renderedCharts)) {
       if ($html)
         echo "\n<article class='$class'><h2>$summaryName <small style='user-select: none;'>" . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "</small></h2>\n";
-      else
+      else {
+        if ($concern)
+          echo "\e[48;2;32;32;0m\n";  // dark yellow
         echo "\n$summaryName: " . $eventCount . " event" . ($eventCount === 1 ? '' : 's') . $percent . "\n";
+      }
 
       if (isset($summaryConfig['description'])) {
         if ($html)
@@ -586,6 +590,10 @@ function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
 
       if ($html)
         echo "</article>\n";
+      else {
+        if ($concern)
+          echo "\e[0m\n";
+      }
     }
   }
 }
