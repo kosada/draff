@@ -632,21 +632,25 @@ $longopts = [
   'help',
 ];
 $options = getopt('', $longopts);
-if (empty($options) || isset($options['help']))
+if (isset($options['help']))
   usage();
 
-if (isset($options['yesterday']) || isset($options['today'])) {
-  $logDate = date('Ymd', isset($options['yesterday']) ? strtotime('-1 day') : time());
-  $logfile = sprintf($config['logfile'], $logDate);
-}
-else if (isset($options['date'])) {
+if (isset($options['date'])) {
   $logDate = date('Ymd', strtotime($options['date']));
   $logfile = sprintf($config['logfile'], $logDate);
 }
 else if (isset($options['log']))
   $logfile = $options['log'];
-else
-  usage();
+else if (isset($options['today'])) {
+  $logDate = date('Ymd');
+  $logfile = sprintf($config['logfile'], $logDate);
+}
+else {
+  // If `--yesterday` was set.
+  // Or if no date/log option was set, default to yesterday.
+  $logDate = date('Ymd', strtotime('-1 day'));
+  $logfile = sprintf($config['logfile'], $logDate);
+}
 
 $html  = isset($options['html']);
 $email = isset($options['email']);
