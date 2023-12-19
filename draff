@@ -457,6 +457,8 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
     else {
       // Sort by a specific field:
       $sortBy[0] = [$sortBy[0]];
+      if (!isset($sortBy[1]))
+        $sortBy[1] = 'ascending';
       uasort($groupedEvents, function ($a, $b) use ($sortBy) {
         $av = getEventValue($a['exampleEvent'], $sortBy[0][0]);
         $bv = getEventValue($b['exampleEvent'], $sortBy[0][0]);
