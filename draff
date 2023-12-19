@@ -188,9 +188,13 @@ function setEventValue(Array &$event, String $fieldPath, $value) {
  * @return bool
  */
 function eventMatchesRegexGroup(Array $event, Array $regexGroup) : bool {
-  foreach ($regexGroup as $fieldPath => $fieldValueRegex)
-    if (!preg_match("~$fieldValueRegex~", getEventValue($event, $fieldPath)))
+  foreach ($regexGroup as $fieldPath => $fieldValueRegex) {
+    $ret = @preg_match("~$fieldValueRegex~", getEventValue($event, $fieldPath));
+    if ($ret === false)
+      error_log("error: regex compilation failed for regex \"{$fieldValueRegex}\" for field \"{$fieldPath}\": " . preg_last_error_msg());
+    if (!$ret)
       return false;
+  }
 
   return true;
 }
