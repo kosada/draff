@@ -112,7 +112,12 @@ function truncate($string) : string {
   if (strlen($string) <= $maxLength)
     return $string;
 
-  return substr($string, 0, $maxLength) . '…';
+  $out = substr($string, 0, $maxLength);
+  if (!$html)
+    // Terminate any ANSI hyperlinks that might have been truncated.
+    $out .= "\e]8;;\e\\";
+
+  return $out . '…';
 }
 
 /**
