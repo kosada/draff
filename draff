@@ -355,8 +355,8 @@ function groupEventsByField($events, $groupByField) {
 
 function annotateValue($value) {
   global $config;
-  foreach ($config['annotations'] as $annotateRegex => $annotateLink)
-    $value = preg_replace_callback("~{$annotateRegex}~", function ($matches) use ($annotateLink) {
+  foreach ($config['annotations'] as $annotateRegex => $annotateLink) {
+    $value = @preg_replace_callback("~{$annotateRegex}~", function ($matches) use ($annotateLink) {
       global $html;
       if ($html)
         return '<a href="' . $annotateLink . '" class="annotate"><span class="tooltip" title="Annotation: ' . $annotateLink . '">' . $matches[0] . '&nbsp;📎</span></a>';
@@ -364,6 +364,9 @@ function annotateValue($value) {
         return "\e]8;;" . $annotateLink . "\e\\" . $matches[0] . " 📎\e]8;;\e\\";
 
     }, $value);
+    if ($value === null)
+      error_log("error: regex compilation failed for regex \"{$annotateRegex}\" for annotation \"{$annotateLink}\": " . preg_last_error_msg());
+  }
 
   return $value;
 }
