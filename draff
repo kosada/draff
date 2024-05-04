@@ -20,7 +20,7 @@ function progress(int $current, int $total) {
   $progress = (int)(($current / $total) * $width);
   echo "\rParsing…  " . str_repeat('▓', $progress) . str_repeat('░', max(0, $width - $progress))
     . '  ' . str_pad($current, strlen($total), ' ', STR_PAD_LEFT) . ' / ' . $total . ' events'
-    . '  (mem: ' . (int)(memory_get_usage() / 1024 / 1024) . ' MB)';
+    . '  (' . number_format(memory_get_usage() / 1024 / 1024) . ' MiB RAM)';
 }
 
 function renderHourOfDayHistogram($hourlyCounts) {
@@ -546,8 +546,13 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
   return renderMarkdownTable($title, $tableData, [], ['count' => STR_PAD_LEFT]);
 }
 
-function showSummaries($eventsGrouped, $totalEventCount, $showOnly) {
+function showSummaries($eventsGrouped, $totalEventCount, $parseLogDuration, $showOnly) {
   global $firstTimestamp, $lastTimestamp, $html, $config;
+
+  echo 'Processed ' . number_format($totalEventCount) . ' events'
+    . ' in ' . number_format($parseLogDuration) . ' seconds'
+    . ' (' . number_format($totalEventCount / $parseLogDuration) . ' events/second)'
+    . ' using ' . number_format(memory_get_peak_usage() / 1024 / 1024) . " MiB RAM\n";
 
   $timeFormat = 'Y-m-d H:i:s';
   global $html;
@@ -665,7 +670,9 @@ $email = isset($options['email']);
 $long  = isset($options['long']);
 
 $eventsGrouped = [];
+$t0 = microtime(true);
 parseLog($logfile, $eventsGrouped, $eventCount, $options['summarize-only'] ?? '');
+$parseLogDuration = microtime(true) - $t0;
 
 if ($email) {
   $email_to = $options['email-to'] ?? implode(', ', $config['email_to']);
@@ -734,7 +741,7 @@ if ($html)
     </style>
   ';
 
-showSummaries($eventsGrouped, $eventCount, $options['show-only'] ?? $options['filter'] ?? '');
+showSummaries($eventsGrouped, $eventCount, $parseLogDuration, $options['show-only'] ?? $options['filter'] ?? '');
 
 if ($email) {
   $body = ob_get_contents();
