@@ -500,7 +500,7 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
         $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show a representative document and surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
 
       // Make the columns line up when copying from the email and pasting in a text editor.
-      $rowCountLabel = str_repeat(' ', 6 - $rowCountLabelLen) . $rowCountLabel;
+      $rowCountLabel = str_repeat(' ', max(0, 6 - $rowCountLabelLen)) . $rowCountLabel;
     }
 
     $row = ['count' => $rowCountLabel];
