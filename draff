@@ -42,6 +42,13 @@ function renderHourOfDayHistogram($hourlyCounts) {
   return $out;
 }
 
+/**
+ * Reduces ANSI hyperlinks to just the link's title.
+ */
+function stripAnsi(string $s) : String {
+  return preg_replace('@\e\]8;;[^\e]+\e\\\([^\e]+)\e\]8;;\e\\\@', '$1', $s);
+}
+
 function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
   if (count($data) === 0)
     return '';
@@ -64,7 +71,7 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
         $headers[] = $key;
       if (is_array($value))
         $value = json_encode($value);
-      $width = max(mb_strlen($html ? strip_tags($key) : $key), mb_strlen($html ? strip_tags($value) : $value));
+      $width = max(mb_strlen($html ? strip_tags($key) : stripAnsi($key)), mb_strlen($html ? strip_tags($value) : stripAnsi($value)));
       if (!isset($widths[$key]) || $width > $widths[$key])
         $widths[$key] = $width;
     }
@@ -438,8 +445,12 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
   }
 
   $title = $chartName;
-  if ($html && !empty($kibanaURL))
-    $title = "<a href=\"$kibanaURL\"><span class='tooltip' title=\"Kibana Discover query: " . htmlspecialchars(implode(' OR ', $kibanaQueryComponents)) . "\"><span class='content'>$title</span></span></a>";
+  if (!empty($kibanaURL)) {
+    if ($html)
+      $title = "<a href=\"{$kibanaURL}\"><span class='tooltip' title=\"Kibana Discover query: " . htmlspecialchars(implode(' OR ', $kibanaQueryComponents)) . "\"><span class='content'>{$title}</span></span></a>";
+    else
+      $title = "\e]8;;{$kibanaURL}\e\\{$title}\e]8;;\e\\";
+  }
   if (count($groupedEvents) > $count)
     $title .= $html ? " <small>top $count</small>" : " (top $count)";
   if (!empty($hideGroupsWithFewerThan_removedItems))
@@ -491,13 +502,17 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
   $tableData = [];
   foreach (array_slice($groupedEvents, 0, $count) as $bucketName => $bucketData) {
     $rowCountLabel = $bucketData['count'] . $times;
-    if ($html && !empty($bucketData['exampleEvent']['_id'])) {
+    if (!empty($bucketData['exampleEvent']['_id'])) {
       $rowCountLabelLen = mb_strlen($rowCountLabel);
       $kibanaURL = $config['kibana_base_url'] . '/app/discover#/context/' . $config['elasticsearch_data_view_id'] . '/' . $bucketData['exampleEvent']['_id'];
-      if ($bucketData['count'] == 1)
-        $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show this document and its surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+      if ($html) {
+        if ($bucketData['count'] == 1)
+          $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show this document and its surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+        else
+          $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show a representative document and surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+      }
       else
-        $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show a representative document and surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+        $rowCountLabel = "\e]8;;{$kibanaURL}\e\\{$rowCountLabel}\e]8;;\e\\";
 
       // Make the columns line up when copying from the email and pasting in a text editor.
       $rowCountLabel = str_repeat(' ', max(0, 6 - $rowCountLabelLen)) . $rowCountLabel;
