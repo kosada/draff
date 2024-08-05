@@ -161,7 +161,7 @@ function getEventValue(Array $event, String $fieldPath) : String {
   }
 
   if (is_array($p)) {
-    if (count($p) === 1)
+    if (count($p) === 1 && is_string(reset($p)))
       $p = reset($p);
     else {
       global $html;
