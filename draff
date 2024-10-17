@@ -132,18 +132,19 @@ function truncate($string) : string {
  *
  * @param [Array] $event
  * @param [String] $fieldPath A dot-separated field path (e.g. `event.type`).
+ * @param [bool] $fancyNull When the specified field doesn't exist in the event, should this function return string NULL_STRING (true) or PHP null (false).
  * @return String If the event's value is an array, this function returns it as a JSON-encoded string.
  */
-function getEventValue(Array $event, String $fieldPath) : String {
+function getEventValue(Array $event, String $fieldPath, bool $fancyNull = true) : String|null {
   if ($fieldPath === 'client.geo.region_city') {
-    $region = getEventValue($event, 'client.geo.region_iso_code');
-    $city = getEventValue($event, 'client.geo.city_name');
-    if ($region !== NULL_STRING && $city !== NULL_STRING)
+    $region = getEventValue($event, 'client.geo.region_iso_code', false);
+    $city = getEventValue($event, 'client.geo.city_name', false);
+    if ($region && $city)
       return "$region-$city";
-    if ($region !== NULL_STRING)
+    if ($region)
       return $region;
-    $country = getEventValue($event, 'client.geo.country_iso_code');
-    if ($country !== NULL_STRING)
+    $country = getEventValue($event, 'client.geo.country_iso_code', false);
+    if ($country)
       return $country;
   }
 
@@ -153,7 +154,7 @@ function getEventValue(Array $event, String $fieldPath) : String {
     if (isset($p[$component]))
       $p = $p[$component];
     else
-      return NULL_STRING;
+      return $fancyNull ? NULL_STRING : null;
 
   if ($fieldPath === 'client.user.name' && is_array($p) && in_array('archive', $p)) {
     unset($p[array_search('archive', $p)]);
@@ -201,7 +202,7 @@ function setEventValue(Array &$event, String $fieldPath, $value) {
  */
 function eventMatchesRegexGroup(Array $event, Array $regexGroup) : bool {
   foreach ($regexGroup as $fieldPath => $fieldValueRegex) {
-    $ret = @preg_match("~$fieldValueRegex~", getEventValue($event, $fieldPath));
+    $ret = @preg_match("~$fieldValueRegex~", getEventValue($event, $fieldPath, false));
     if ($ret === false)
       error_log("error: regex compilation failed for regex \"{$fieldValueRegex}\" for field \"{$fieldPath}\": " . preg_last_error_msg());
     if (!$ret)
@@ -230,8 +231,8 @@ function pruneEvent(&$event, $summaryConfig) {
 
   $prunedEvent = [];
   foreach ($fieldsUsed as $fieldPath) {
-    $value = getEventValue($event, $fieldPath);
-    if ($value !== NULL_STRING)
+    $value = getEventValue($event, $fieldPath, false);
+    if ($value)
       setEventValue($prunedEvent, $fieldPath, $value);
   }
 
