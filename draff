@@ -232,7 +232,7 @@ function pruneEvent(&$event, $summaryConfig) {
   $prunedEvent = [];
   foreach ($fieldsUsed as $fieldPath) {
     $value = getEventValue($event, $fieldPath, false);
-    if ($value)
+    if ($value !== null)
       setEventValue($prunedEvent, $fieldPath, $value);
   }
 
