@@ -114,7 +114,7 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
 function truncate($string) : string {
   global $html, $long;
 
-  $maxLength = ($html || $long) ? 1024 : 80;
+  $maxLength = $long ? 16384 : ($html ? 1024 : 80);
 
   if (strlen($string) <= $maxLength)
     return $string;
