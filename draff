@@ -120,9 +120,12 @@ function truncate($string) : string {
     return $string;
 
   $out = substr($string, 0, $maxLength);
-  if (!$html)
+  if (!$html) {
     // Terminate any ANSI hyperlinks that might have been truncated.
     $out .= "\e]8;;\e\\";
+    // Terminate any ANSI highlights that might have been truncated.
+    $out .= "\e[27m";
+  }
 
   return $out . '…';
 }
@@ -361,6 +364,29 @@ function groupEventsByField($events, $groupByField) {
   return $groupedEvents;
 }
 
+function highlightMatches($select, $name, $value) {
+  // @todo Currently this highlights matches in any regex group, whereas ideally it should match only in the _active_ regex group.
+  foreach ($select as $regexes) {
+    foreach ($regexes as $fieldName => $fieldRegex) {
+      // Skip regexes intended for exclusion.
+      if (str_contains($fieldRegex, '(?!'))
+        continue;
+
+      if ($fieldName === $name) {
+        $count = null;
+        $value = preg_replace_callback("~$fieldRegex~", function ($matches) {
+          global $html;
+          if ($html)
+            return "<mark>{$matches[0]}</mark>";
+          else
+            return "\e[7m{$matches[0]}\e[27m";
+        }, $value);
+      }
+    }
+  }
+  return $value;
+}
+
 function annotateValue($value) {
   global $config;
   foreach ($config['annotations'] as $annotateRegex => $annotateLink) {
@@ -552,6 +578,9 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
       else
         $fieldValue = str_replace("\n", '\n', $fieldValue);
 
+      if (!empty($summaryConfig['select']))
+        $fieldValue = highlightMatches($summaryConfig['select'], $fieldName, $fieldValue);
+
       $fieldValue = annotateValue($fieldValue);
 
       $row[$fieldName . $suffix] = truncate($fieldValue);
@@ -710,6 +739,8 @@ if ($html)
       h2 small, h3 small { background-color: rgba(0,0,0,0.2); border-radius: 1em; padding: 0.5em; }
       article p.description { opacity: 0.5; max-width: 40em; }
       small { opacity: 0.5; font-size: 70%; font-weight: normal; }
+      mark { background-color: #eeb; }
+      .concern mark { background-color: #ee8; }
       pre { white-space: pre-wrap; }
       article table th { text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 0 1em 0 0; }
       article table th:first-child,
