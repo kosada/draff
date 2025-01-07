@@ -49,6 +49,14 @@ function stripAnsi(string $s) : String {
   return preg_replace('@\e\]8;;[^\e]+\e\\\([^\e]+)\e\]8;;\e\\\@', '$1', $s);
 }
 
+function generateCSSIdentifier(string $s) : string {
+  $s = strtolower($s);
+  $s = preg_replace('/(<br>|&nbsp;).+$/', '', $s);
+  $s = preg_replace('/^[^a-z]+/', '', $s);
+  $s = preg_replace('/[^a-z0-9-]+/', '-', $s);
+  return rtrim($s, '-');
+}
+
 function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
   if (count($data) === 0)
     return '';
@@ -80,8 +88,17 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
   $headerLine = [];
   foreach ($headers as $header)
     $headerLine[] = $header === $lastHeader ? $header : str_pad(in_array($header, ['count', 'hourOfDayHistogram']) ? '' : $header, $widths[$header]);
-  if ($html)
-    $output .= '<tr><th>' . implode('</th><th>', $headerLine) . "</th></tr>\n";
+  if ($html) {
+    $output .= '<tr>';
+    foreach ($headerLine as $header) {
+      $cssIdentifier = generateCSSIdentifier($header);
+      $output .= '<th';
+      if ($cssIdentifier)
+        $output .= " class='{$cssIdentifier}'";
+      $output .= ">{$header}</th>";
+    }
+    $output .= "</tr>\n";
+  }
   else
     $output .= '        ' . implode(' | ', $headerLine) . "\n";
 
@@ -92,16 +109,32 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
     $output .= '        ' . implode(' | ', $separatorLine) . "\n";
 
   foreach ($data as $row) {
-    $rowLine = [];
+    if ($html)
+      $output .= '<tr>';
+    else
+      $output .= '        ';
     foreach ($row as $key => $value) {
       if (in_array($key, $ignoreKeys))
         continue;
-      $rowLine[] = $key === $lastHeader ? $value : str_pad($value, $value === NULL_STRING ? $widths[$key] + strlen($value) - mb_strlen($value) : $widths[$key], ' ', $alignments[$key] ?? STR_PAD_RIGHT);
+
+      $value = $key === $lastHeader ? $value : str_pad($value, $value === NULL_STRING ? $widths[$key] + strlen($value) - mb_strlen($value) : $widths[$key], ' ', $alignments[$key] ?? STR_PAD_RIGHT);
+
+      if ($html) {
+        $cssIdentifier = generateCSSIdentifier($key);
+        $output .= '<td';
+        if ($cssIdentifier)
+          $output .= " class='{$cssIdentifier}'";
+        $output .= ">{$value}</td>";
+      }
+      else {
+        $output .= $value;
+        if ($key !== $lastHeader)
+          $output .= ' | ';
+      }
     }
     if ($html)
-      $output .= '<tr><td>' . implode('</td><td>', $rowLine) . "</td></tr>\n";
-    else
-      $output .= '        ' . implode(' | ', $rowLine) . "\n";
+      $output .= '</tr>';
+    $output .= "\n";
   }
 
   if ($html)
@@ -747,6 +780,7 @@ if ($html)
       article table th:nth-child(2) {
         border-bottom: none; width: 4em;
       }
+      article table .client-user-name { width: 10em; max-width: 10em; }
       article table td { vertical-align: baseline; word-break: break-all; white-space: pre-wrap; min-width: 5em; padding: 0 1em 0 0; font-variant-numeric: tabular-nums; }
       article table td:first-child { text-align: right; }
       article table td:first-child,
