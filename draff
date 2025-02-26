@@ -43,10 +43,14 @@ function renderHourOfDayHistogram($hourlyCounts) {
 }
 
 /**
- * Reduces ANSI hyperlinks to just the link's title.
+ * Removes zero-width ANSI escape sequences.
  */
 function stripAnsi(string $s) : String {
-  return preg_replace('@\e\]8;;[^\e]+\e\\\([^\e]+)\e\]8;;\e\\\@', '$1', $s);
+  // Reduce ANSI hyperlinks to just the link's title:
+  $s = preg_replace('@\e\]8;;[^\e]+\e\\\([^\e]+)\e\]8;;\e\\\@', '$1', $s);
+  // Remove formatting:
+  $s = preg_replace('@\e\[\d+m@', '', $s);
+  return $s;
 }
 
 function generateCSSIdentifier(string $s) : string {
@@ -117,7 +121,11 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
       if (in_array($key, $ignoreKeys))
         continue;
 
-      $value = $key === $lastHeader ? $value : str_pad($value, $value === NULL_STRING ? $widths[$key] + strlen($value) - mb_strlen($value) : $widths[$key], ' ', $alignments[$key] ?? STR_PAD_RIGHT);
+      if ($value === NULL_STRING)
+        $padWidth = $widths[$key] + strlen($value) - mb_strlen($value);
+      else
+        $padWidth = $widths[$key] + strlen($value) - mb_strlen(stripAnsi($value));
+      $value = $key === $lastHeader ? $value : str_pad($value, $padWidth, ' ', $alignments[$key] ?? STR_PAD_RIGHT);
 
       if ($html) {
         $cssIdentifier = generateCSSIdentifier($key);
