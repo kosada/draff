@@ -206,7 +206,9 @@ function getEventValue(Array $event, String $fieldPath, bool $fancyNull = true) 
   }
 
   if (is_array($p)) {
-    if (count($p) === 1 && is_string(reset($p)))
+    if (count($p) === 0)
+      return $fancyNull ? NULL_STRING : null;
+    elseif (count($p) === 1 && is_string(reset($p)))
       $p = reset($p);
     else {
       global $html;
