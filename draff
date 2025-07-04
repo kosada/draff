@@ -99,7 +99,9 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
       $output .= '<th';
       if ($cssIdentifier)
         $output .= " class='{$cssIdentifier}'";
-      $output .= ">{$header}</th>";
+      $output .= '>';
+      $output .= str_replace('.', '<wbr />.', $header);
+      $output .= '</th>';
     }
     $output .= "</tr>\n";
   }
