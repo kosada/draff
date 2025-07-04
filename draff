@@ -759,6 +759,12 @@ $html  = isset($options['html']);
 $email = isset($options['email']);
 $long  = isset($options['long']);
 
+if (isset($options['email-to']))
+  $email = true;
+
+if ($email)
+  $html = true;
+
 $eventsGrouped = [];
 $t0 = microtime(true);
 parseLog($logfile, $eventsGrouped, $eventCount, $options['summarize-only'] ?? '');
