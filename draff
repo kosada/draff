@@ -729,8 +729,8 @@ $longopts = [
 
   # Output:
   'html',
-  'email',
-  'email-to:',
+  'email', 'mail',
+  'email-to:', 'mail-to:',
   'long',
   'show-only:',
   'filter:',
@@ -758,10 +758,10 @@ else {
 }
 
 $html  = isset($options['html']);
-$email = isset($options['email']);
+$email = isset($options['email']) || isset($options['mail']) ;
 $long  = isset($options['long']);
 
-if (isset($options['email-to']))
+if (isset($options['email-to']) || isset($options['mail-to']))
   $email = true;
 
 if ($email)
@@ -773,7 +773,7 @@ parseLog($logfile, $eventsGrouped, $eventCount, $options['summarize-only'] ?? ''
 $parseLogDuration = microtime(true) - $t0;
 
 if ($email) {
-  $email_to = $options['email-to'] ?? implode(', ', $config['email_to']);
+  $email_to = $options['email-to'] ?? $options['mail-to'] ?? implode(', ', $config['email_to']);
   if (posix_isatty(STDOUT))
     echo 'Generating…';
   ob_start();
