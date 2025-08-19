@@ -234,9 +234,10 @@ function getEventValue(Array $event, String $fieldPath, bool $fancyNull = true) 
   global $config;
   if (isset($config['rewrites'][$fieldPath]))
     foreach ($config['rewrites'][$fieldPath] as $regexMatch => $regexReplacement) {
-      $p = preg_replace("~$regexMatch~s", $regexReplacement, $p);
-      if (is_null($p))
-        die("\nerror: rewriting field \"{$fieldPath}\" with regex \"~{$regexMatch}~s\" returned null.\n");
+      $p2 = preg_replace("~$regexMatch~ms", $regexReplacement, $p);
+      if (is_null($p2))
+        die("\nerror: rewriting field \"{$fieldPath}\" value \"{$p}\" with regex \"~{$regexMatch}~ms\" returned null.\n");
+      $p = $p2;
     }
 
   return $p;
