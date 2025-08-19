@@ -195,12 +195,25 @@ function getEventValue(Array $event, String $fieldPath, bool $fancyNull = true) 
   }
 
   $components = explode('.', $fieldPath);
+  $componentIndex = 0;
   $p = $event;
-  foreach ($components as $component)
+  foreach ($components as $component) {
     if (isset($p[$component]))
       $p = $p[$component];
-    else
-      return $fancyNull ? NULL_STRING : null;
+    else {
+      // Handle case where the message keys have interior dotted sections.
+      // E.g. fieldPath `gitlab.grpc.request.glProjectPath` should match:
+      // {"gitlab":{"grpc.request.glProjectPath":"kosada/client/someClient"}}
+      $remainingComponents = implode('.', array_slice($components, $componentIndex));
+      if (isset($p[$remainingComponents])) {
+        $p = $p[$remainingComponents];
+        break;
+      }
+      else
+        return $fancyNull ? NULL_STRING : null;
+    }
+    ++$componentIndex;
+  }
 
   if ($fieldPath === 'client.user.name' && is_array($p) && in_array('archive', $p)) {
     unset($p[array_search('archive', $p)]);
