@@ -860,6 +860,10 @@ showSummaries($eventsGrouped, $eventCount, $parseLogDuration, $options['show-onl
 
 if ($email) {
   $body = ob_get_contents();
+
+  // Fatal error: Uncaught ValueError: mail(): Argument #3 ($message) must not contain any null bytes
+  $body = str_replace("\0", '<NUL>', $body);
+
   ob_end_clean();
   if (posix_isatty(STDOUT))
      echo "\nSending…";
