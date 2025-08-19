@@ -596,8 +596,10 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
 
     foreach ($showFields as $fieldName) {
       $suffix = '';
+      // In macOS 26 Mail.app, the ⯆⯅ arrow glyphs are rendered incorrectly.  `&#x2bc6;` and `&#x2bc5;` are also rendered incorrectly.  Using a different arrow glyph does work.
       if (in_array($fieldName, $sortBy[0]))
-        $suffix .= ($html ? '&nbsp;' : ' ') . ($sortBy[1] === 'descending' ? '⯆' : '⯅');
+        $suffix .= ($html ? '&nbsp;' : ' ') . ($sortBy[1] === 'descending' ? '⬇︎' : '⬆︎');
+
       if ((is_array($groupByField) && !in_array($fieldName, $groupByField))
         || (!is_array($groupByField) && $fieldName !== $groupByField))
         $suffix .= $html ? '<br><small>(poly)</small>' : ' (poly)';
