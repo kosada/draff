@@ -673,6 +673,7 @@ function showSummaries($eventsGrouped, $totalEventCount, $parseLogDuration, $sho
     echo 'Last event:  ' . $lastTimestamp->format($timeFormat) . "\n\n";
   }
 
+  $summariesShown = 0;
   foreach ($config['summaries'] as $summaryName => $summaryConfig) {
     if (!isset($eventsGrouped[$summaryName]))
       continue;
@@ -714,7 +715,11 @@ function showSummaries($eventsGrouped, $totalEventCount, $parseLogDuration, $sho
           echo "\e[0m\n";
       }
     }
+
+    ++$summariesShown;
   }
+
+  return $summariesShown;
 }
 
 
@@ -728,7 +733,7 @@ function usage() {
   die("{$app}: Inputs logs, outputs a daily email summary.\n"
     . "\n"
     . "Usage: \n"
-    . "    {$app} [--yesterday|--today|--date='-2 days'|--log=someLogFilePath] [--html] [--email] [--email-to=someAddress] [--show-only=partialNameOfASummary]\n");
+    . "    {$app} [--yesterday|--today|--date='-2 days'|--log=someLogFilePath] [--html] [--email] [--email-to=someAddress] [--email-subject=someSubject] [--show-only=partialNameOfASummary]\n");
 }
 
 $longopts = [
@@ -745,6 +750,7 @@ $longopts = [
   'html',
   'email', 'mail',
   'email-to:', 'mail-to:',
+  'email-subject:', 'mail-subject:',
   'long',
   'show-only:',
   'filter:',
@@ -856,7 +862,7 @@ if ($html)
     </style>
   ';
 
-showSummaries($eventsGrouped, $eventCount, $parseLogDuration, $options['show-only'] ?? $options['filter'] ?? '');
+$summariesShown = showSummaries($eventsGrouped, $eventCount, $parseLogDuration, $options['show-only'] ?? $options['filter'] ?? '');
 
 if ($email) {
   $body = ob_get_contents();
@@ -865,9 +871,14 @@ if ($email) {
   $body = str_replace("\0", '<NUL>', $body);
 
   ob_end_clean();
-  if (posix_isatty(STDOUT))
-     echo "\nSending…";
-  mail($email_to, $config['email_subject'], $body, $html ? 'Content-Type: text/html; charset=UTF-8' : []);
-  if (posix_isatty(STDOUT))
-    echo "\n";
+
+  if ($summariesShown > 0) {
+    if (posix_isatty(STDOUT))
+      echo "\nSending…";
+    mail($email_to, $options['email-subject'] ?? $options['mail-subject'] ?? $config['email_subject'], $body, $html ? 'Content-Type: text/html; charset=UTF-8' : []);
+    if (posix_isatty(STDOUT))
+      echo "\n";
+  }
+  elseif (posix_isatty(STDOUT))
+    echo "\nNothing to send.\n";
 }
