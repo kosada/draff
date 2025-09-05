@@ -380,7 +380,8 @@ function parseLog($filepath, &$eventsGrouped, &$eventCount, $summarizeOnly) {
   }
   fclose($fh);
   progress($lineIndex - 1, $eventCount);
-  echo "\n";
+  if (posix_isatty(STDOUT))
+    echo "\n";
 }
 
 /**
