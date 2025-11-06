@@ -93,7 +93,7 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
   foreach ($headers as $header)
     $headerLine[] = $header === $lastHeader ? $header : str_pad(in_array($header, ['count', 'hourOfDayHistogram']) ? '' : $header, $widths[$header]);
   if ($html) {
-    $output .= '<tr>';
+    $output .= '<thead><tr>';
     foreach ($headerLine as $header) {
       $cssIdentifier = generateCSSIdentifier($header);
       $output .= '<th';
@@ -103,7 +103,7 @@ function renderMarkdownTable($title, $data, $ignoreKeys=[], $alignments=[]) {
       $output .= str_replace('.', '<wbr />.', $header);
       $output .= '</th>';
     }
-    $output .= "</tr>\n";
+    $output .= "</tr></thead>\n";
   }
   else
     $output .= '        ' . implode(' | ', $headerLine) . "\n";
@@ -804,8 +804,8 @@ if ($html)
   echo '
     <style type="text/css">
       a { color: #126; }
-      article { background-color: #f8f8f8; border-radius: 1em; padding: 1em; margin-bottom: 2em; }
-      article.concern, article.concern table th { background-color: #ffd; }
+      article, article table thead { background-color: #f8f8f8; border-radius: 1em; padding: 1em; margin-bottom: 2em; }
+      article.concern, article.concern table thead { background-color: #ffd; }
       h2 { margin: 0; }
       h3 { border-bottom: 1px solid silver; margin-top: 1em; }
       h3 .content { opacity: 0.5; }
@@ -816,6 +816,7 @@ if ($html)
       mark { background-color: #eeb; }
       .concern mark { background-color: #ee8; }
       pre { white-space: pre-wrap; }
+      article table thead { position: sticky; top: 0px; }
       article table th { text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 0 1em 0 0; }
       article table th:first-child,
       article table th:nth-child(2) {
