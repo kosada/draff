@@ -478,8 +478,7 @@ function annotateValue($value) {
 }
 
 function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
-  global $config;
-  global $html;
+  global $config, $html, $kibanaBaseURL;
   $times = $html ? '×' : 'x';
 
   $count = $chartConfig['count'] ?? (!empty($summaryConfig['concern']) ? 1000 : 5);
@@ -533,14 +532,15 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
     foreach (array_slice($showFields, 0, -1) as $field)
       $columnWidths[] = $field . ':(width:180)';
 
-    $kibanaURL = $config['kibana_base_url'] . '/app/discover#/'
-      . '?_g=(time:(from:now-1d/d,to:now-1d/d),refreshInterval:(pause:!t))'
-      . '&_a=('
-        . 'columns:!(' . urlencode(implode(',', $showFields)) . '),'
-        . 'grid:(columns:(' . urlencode(implode(',', $columnWidths)) . ')),'
-        . 'filters:!((meta:(negate:!t),query:(match_phrase:(tags:exclude_from_daily_summary)))),'
-        . 'query:(language:lucene,query:\'' . urlencode(implode(' OR ', $kibanaQueryComponents)) . '\')'
-      . ')';
+    if (!empty($kibanaBaseURL))
+      $kibanaURL = $kibanaBaseURL . '/app/discover#/'
+        . '?_g=(time:(from:now-1d/d,to:now-1d/d),refreshInterval:(pause:!t))'  // @todo this should use the absolute date range specified by $logDate (rather than being hardcoded to yesterday)
+        . '&_a=('
+          . 'columns:!(' . urlencode(implode(',', $showFields)) . '),'
+          . 'grid:(columns:(' . urlencode(implode(',', $columnWidths)) . ')),'
+          . 'filters:!((meta:(negate:!t),query:(match_phrase:(tags:exclude_from_daily_summary)))),'
+          . 'query:(language:lucene,query:\'' . urlencode(implode(' OR ', $kibanaQueryComponents)) . '\')'
+        . ')';
   }
 
   $title = $chartName;
@@ -601,17 +601,25 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
   $tableData = [];
   foreach (array_slice($groupedEvents, 0, $count) as $bucketName => $bucketData) {
     $rowCountLabel = $bucketData['count'] . $times;
+
     if (!empty($bucketData['exampleEvent']['_id'])) {
       $rowCountLabelLen = mb_strlen($rowCountLabel);
-      $kibanaURL = $config['kibana_base_url'] . '/app/discover#/context/' . $config['elasticsearch_data_view_id'] . '/' . $bucketData['exampleEvent']['_id'];
-      if ($html) {
-        if ($bucketData['count'] == 1)
-          $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show this document and its surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+
+      if (!empty($kibanaBaseURL)) {
+        $kibanaURL = $kibanaBaseURL . '/app/discover#/context/' . $config['elasticsearch_data_view_id'] . '/' . $bucketData['exampleEvent']['_id'];
+        if ($html) {
+          if ($bucketData['count'] == 1)
+            $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show this document and its surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+          else
+            $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show a representative document and surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+        }
         else
-          $rowCountLabel = "<a href='{$kibanaURL}'><span class='tooltip' title=\"Kibana: Show a representative document and surrounding documents\"><span class='content'>{$rowCountLabel}</span></span></a>";
+          $rowCountLabel = "\e]8;;{$kibanaURL}\e\\{$rowCountLabel}\e]8;;\e\\";
       }
-      else
-        $rowCountLabel = "\e]8;;{$kibanaURL}\e\\{$rowCountLabel}\e]8;;\e\\";
+      else {
+        if ($html)
+          $rowCountLabel = "<span class='content'>{$rowCountLabel}</span>";
+      }
 
       // Make the columns line up when copying from the email and pasting in a text editor.
       $rowCountLabel = str_repeat(' ', max(0, 6 - $rowCountLabelLen)) . $rowCountLabel;
@@ -769,6 +777,7 @@ $longopts = [
   'show-only:',
   'filter:',
   'show-stats:',
+  'kibana-base-url:',
   'help',
 ];
 $options = getopt('', $longopts);
@@ -796,6 +805,17 @@ $html  = isset($options['html']);
 $email = isset($options['email']) || isset($options['mail']) ;
 $long  = isset($options['long']);
 $showStats = isset($options['show-stats']) ? filter_var($options['show-stats'], FILTER_VALIDATE_BOOLEAN) : true;
+
+$kibanaBaseURL = '';
+if (isset($options['kibana-base-url'])) {
+  if ($options['kibana-base-url'] === 'null')
+    // Workaround because getopt ignores arguments with empty values.
+    $kibanaBaseURL = '';
+  else
+    $kibanaBaseURL = $options['kibana-base-url'];
+}
+else if (isset($config['kibana_base_url']))
+  $kibanaBaseURL = $config['kibana_base_url'];
 
 if (isset($options['email-to']) || isset($options['mail-to']))
   $email = true;
