@@ -666,24 +666,25 @@ function renderChart($summaryConfig, $chartName, $chartConfig, $events) {
 }
 
 function showSummaries($eventsGrouped, $totalEventCount, $parseLogDuration, $showOnly) {
-  global $firstTimestamp, $lastTimestamp, $html, $config;
+  global $firstTimestamp, $lastTimestamp, $html, $config, $showStats;
 
-  echo 'Processed ' . number_format($totalEventCount) . ' events'
-    . ' in ' . number_format($parseLogDuration) . ' seconds'
-    . ' (' . number_format($totalEventCount / $parseLogDuration) . ' events/second)'
-    . ' using ' . number_format(memory_get_peak_usage() / 1024 / 1024) . " MiB RAM\n";
+  if ($showStats) {
+    echo 'Processed ' . number_format($totalEventCount) . ' events'
+      . ' in ' . number_format($parseLogDuration) . ' seconds'
+      . ' (' . number_format($totalEventCount / $parseLogDuration) . ' events/second)'
+      . ' using ' . number_format(memory_get_peak_usage() / 1024 / 1024) . " MiB RAM\n";
 
-  $timeFormat = 'Y-m-d H:i:s';
-  global $html;
-  if ($html) {
-    echo "<table>\n";
-    echo '<tr><th>First event</th><td>' . $firstTimestamp->format($timeFormat) . "</td></tr>\n";
-    echo '<tr><th>Last event</th><td>' . $lastTimestamp->format($timeFormat) . "</td></tr>\n";
-    echo "</table><br>\n";
-  }
-  else {
-    echo 'First event: ' . $firstTimestamp->format($timeFormat) . "\n";
-    echo 'Last event:  ' . $lastTimestamp->format($timeFormat) . "\n\n";
+    $timeFormat = 'Y-m-d H:i:s';
+    if ($html) {
+      echo "<table>\n";
+      echo '<tr><th>First event</th><td>' . $firstTimestamp->format($timeFormat) . "</td></tr>\n";
+      echo '<tr><th>Last event</th><td>' . $lastTimestamp->format($timeFormat) . "</td></tr>\n";
+      echo "</table><br>\n";
+    }
+    else {
+      echo 'First event: ' . $firstTimestamp->format($timeFormat) . "\n";
+      echo 'Last event:  ' . $lastTimestamp->format($timeFormat) . "\n\n";
+    }
   }
 
   $summariesShown = 0;
@@ -767,6 +768,7 @@ $longopts = [
   'long',
   'show-only:',
   'filter:',
+  'show-stats:',
   'help',
 ];
 $options = getopt('', $longopts);
@@ -793,6 +795,7 @@ else {
 $html  = isset($options['html']);
 $email = isset($options['email']) || isset($options['mail']) ;
 $long  = isset($options['long']);
+$showStats = isset($options['show-stats']) ? filter_var($options['show-stats'], FILTER_VALIDATE_BOOLEAN) : true;
 
 if (isset($options['email-to']) || isset($options['mail-to']))
   $email = true;
