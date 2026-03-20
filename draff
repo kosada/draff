@@ -912,7 +912,11 @@ if ($email) {
   if ($summariesShown > 0) {
     if (posix_isatty(STDOUT))
       echo "\nSending…";
-    mail($email_to, $options['email-subject'] ?? $options['mail-subject'] ?? $config['email_subject'], $body, $html ? 'Content-Type: text/html; charset=UTF-8' : []);
+    mail($email_to, $options['email-subject'] ?? $options['mail-subject'] ?? $config['email_subject'], $body, array_filter([
+      'X-Auto-Response-Suppress' => 'All',
+      'Auto-Submitted' => 'auto-generated',
+      'Content-Type' => $html ? 'text/html; charset=UTF-8' : null,
+    ]));
     if (posix_isatty(STDOUT))
       echo "\n";
   }
