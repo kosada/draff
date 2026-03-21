@@ -231,6 +231,10 @@ function getEventValue(Array $event, String $fieldPath, bool $fancyNull = true) 
     }
   }
 
+  return $p;
+}
+
+function rewriteFieldValue(String $fieldPath, String $p) {
   global $config;
   if (isset($config['rewrites'][$fieldPath]))
     foreach ($config['rewrites'][$fieldPath] as $regexMatch => $regexReplacement) {
@@ -271,6 +275,8 @@ function eventMatchesRegexGroup(Array $event, Array $regexGroup) : bool {
         return false;
     }
     else {
+      if ($fieldValue !== null)
+        $fieldValue = rewriteFieldValue($fieldPath, $fieldValue);
       $ret = @preg_match("~$fieldValueRegex~", $fieldValue);
       if ($ret === false)
         error_log("error: regex compilation failed for regex \"{$fieldValueRegex}\" for field \"{$fieldPath}\": " . preg_last_error_msg());
@@ -302,8 +308,10 @@ function pruneEvent(&$event, $summaryConfig) {
   $prunedEvent = [];
   foreach ($fieldsUsed as $fieldPath) {
     $value = getEventValue($event, $fieldPath, false);
-    if ($value !== null)
+    if ($value !== null) {
+      $value = rewriteFieldValue($fieldPath, $value);
       setEventValue($prunedEvent, $fieldPath, $value);
+    }
   }
 
   return $prunedEvent;
