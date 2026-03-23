@@ -274,6 +274,11 @@ function eventMatchesRegexGroup(Array $event, Array $regexGroup) : bool {
       if (is_null($fieldValue))
         return false;
     }
+    elseif ($fieldValueRegex === '!*') {
+      // '!*' = 'field does not exist'
+      if (!is_null($fieldValue))
+        return false;
+    }
     else {
       if ($fieldValue !== null)
         $fieldValue = rewriteFieldValue($fieldPath, $fieldValue);
@@ -444,8 +449,8 @@ function highlightMatches($select, $name, $value) {
   // @todo Currently this highlights matches in any regex group, whereas ideally it should match only in the _active_ regex group.
   foreach ($select as $regexes) {
     foreach ($regexes as $fieldName => $fieldRegex) {
-      // Skip "field exists".
-      if ($fieldRegex === '*')
+      // Skip "field exists" and "field does not exist".
+      if (in_array($fieldRegex, ['*', '!*']))
         continue;
 
       // Skip regexes intended for exclusion.
